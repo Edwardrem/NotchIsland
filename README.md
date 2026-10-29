@@ -5,7 +5,8 @@
 <p align="center">Your MacBook notch, now a Dynamic Island.<br>
 <a href="https://edwardrem.github.io/NotchIsland/">Website</a> ·
 <a href="https://github.com/Edwardrem/NotchIsland/raw/main/dist/NotchIsland.dmg"><b>Download NotchIsland.dmg</b></a> ·
-<a href="https://github.com/Edwardrem/NotchIsland/releases">Releases</a></p>
+<a href="https://github.com/Edwardrem/NotchIsland/releases">Releases</a><br>
+<sub>Made by <a href="https://www.linkedin.com/in/rufaro-mutepfa-0a64b810a/">Rufaro Edward Mutepfa</a></sub></p>
 
 <p align="center">
   <img src="docs/assets/shade.png" width="420" alt="The NotchIsland shade">
@@ -178,6 +179,15 @@ Settings ▸ Permissions shows the current status with shortcuts to the right Sy
 `docs/` is the GitHub Pages site (https://edwardrem.github.io/NotchIsland/): a single `index.html`
 with the screenshots in `docs/assets`. The download button points at `dist/NotchIsland.dmg` in this
 repository.
+
+## Author
+
+NotchIsland is built and maintained by **Rufaro Edward Mutepfa**.
+
+- GitHub: [@Edwardrem](https://github.com/Edwardrem)
+- LinkedIn: [linkedin.com/in/rufaro-mutepfa-0a64b810a](https://www.linkedin.com/in/rufaro-mutepfa-0a64b810a/)
+
+Questions, ideas or bugs: open an [issue](https://github.com/Edwardrem/NotchIsland/issues), or say hello on LinkedIn.
 
 ## License
 
