@@ -197,6 +197,18 @@ enum QuickSystem {
         }
     }
 
+    /// Quits and starts the app again. macOS applies a new Full Disk Access grant only to a fresh process.
+    static func relaunch() {
+        let bundle = Bundle.main.bundleURL
+        let isBundle = bundle.pathExtension == "app"
+        let target = isBundle ? bundle.path : (Bundle.main.executableURL?.path ?? bundle.path)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", isBundle ? "sleep 0.7; exec /usr/bin/open -n \"$0\"" : "sleep 0.7; exec \"$0\"", target]
+        try? p.run()
+        NSApp.terminate(nil)
+    }
+
     static var isDarkMode: Bool {
         NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
@@ -386,5 +398,24 @@ enum UnitConverter {
               type(of: from) == type(of: to) else { return nil }
         let converted = Measurement(value: value, unit: from).converted(to: to).value
         return Result(value: converted, fromSymbol: from.symbol, toSymbol: to.symbol)
+    }
+}
+
+// MARK: - Hints and privacy panes
+
+/// A problem the island shows in its footer, optionally with the System Settings pane that fixes it.
+struct IslandHint: Equatable {
+    let text: String
+    var settingsPane: String? = nil
+}
+
+/// Deep links into System Settings ▸ Privacy & Security.
+enum PrivacyPane {
+    static let accessibility = "com.apple.preference.security?Privacy_Accessibility"
+    static let calendars = "com.apple.preference.security?Privacy_Calendars"
+    static let fullDiskAccess = "com.apple.preference.security?Privacy_AllFiles"
+
+    static func open(_ pane: String) {
+        if let url = URL(string: "x-apple.systempreferences:\(pane)") { NSWorkspace.shared.open(url) }
     }
 }

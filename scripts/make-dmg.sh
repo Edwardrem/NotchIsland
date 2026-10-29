@@ -1,10 +1,10 @@
 #!/bin/zsh
 # Builds NotchIsland.app (release, Apple silicon) and wraps it in dist/NotchIsland.dmg.
-# Usage: scripts/make-dmg.sh [version]   e.g. scripts/make-dmg.sh 1.0.0
+# Usage: scripts/make-dmg.sh [version]   e.g. scripts/make-dmg.sh 1.0.1
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${1:-1.0.0}"
+VERSION="${1:-1.0.1}"
 BUILD="$(date +%Y%m%d%H%M)"
 APP="dist/NotchIsland.app"
 ROOT="dist/dmg-root"
@@ -23,9 +23,16 @@ cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist > "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
-echo "▸ codesign (ad-hoc)"
-codesign --force --deep --sign - "$APP"
+echo "▸ codesign"
+if KEYCHAIN="$(scripts/signing-identity.sh --unlock 2>/dev/null)"; then
+  codesign --force --deep --sign "NotchIsland Developer" --keychain "$KEYCHAIN" "$APP"
+  echo "  signed with \"NotchIsland Developer\" (stable identity, permission grants survive updates)"
+else
+  codesign --force --deep --sign - "$APP"
+  echo "  signed ad-hoc; run scripts/signing-identity.sh first for a stable identity"
+fi
 codesign --verify --verbose=1 "$APP"
+codesign -dr - "$APP" 2>&1 | grep designated
 
 echo "▸ building $DMG"
 mkdir -p "$ROOT"

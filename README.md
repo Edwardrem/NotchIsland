@@ -23,9 +23,14 @@ search and quick actions. Free, open source (MIT), macOS 13+, Apple silicon.
 
 1. Download [NotchIsland.dmg](https://github.com/Edwardrem/NotchIsland/raw/main/dist/NotchIsland.dmg)
    and drag **NotchIsland** into Applications.
-2. First launch: the app is signed ad-hoc (no paid Developer ID), so right-click ▸ **Open**. On
-   macOS 15+ open it once, then System Settings ▸ Privacy & Security ▸ **Open Anyway**.
-3. Grant what you use (see [Permissions](#permissions)). Settings ▸ Permissions shows the state.
+2. First launch: the app is signed with the project's own certificate, not a paid Developer ID, so
+   right-click ▸ **Open**. On macOS 15+ open it once, then System Settings ▸ Privacy & Security ▸
+   **Open Anyway**.
+3. For notifications, give NotchIsland **Full Disk Access**: System Settings ▸ Privacy & Security ▸
+   Full Disk Access ▸ turn on **NotchIsland** (click **+** and pick it from Applications if it is not
+   listed), then relaunch. Until then the island shows a hint; click it to jump to that pane.
+4. Everything else is asked for when you first use it (see [Permissions](#permissions)).
+   Settings ▸ Permissions shows the state of each.
 
 ## Run from source
 
@@ -42,11 +47,18 @@ usage strings), so permission prompts name the app properly even when it is not 
 ## Build the app and DMG
 
 ```bash
-scripts/make-dmg.sh 1.0.0   # release build → dist/NotchIsland.app → dist/NotchIsland.dmg (ad-hoc signed)
+scripts/signing-identity.sh   # once per Mac: creates the "NotchIsland Developer" signing identity
+scripts/make-dmg.sh 1.0.1     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
 ```
 
 `Resources/Info.plist` is the bundle template, `Resources/AppIcon.icns` the icon (drawn by
 `scripts/icon.swift`). The DMG is committed under `dist/` so the website can link to it directly.
+
+Releases are signed with a self-signed "NotchIsland Developer" certificate kept in its own keychain
+(`~/Library/Keychains/notchisland-signing.keychain-db`, never committed). macOS ties permission
+grants such as Full Disk Access to the app's signature, and an ad-hoc signature changes with every
+build, so a stable identity is what lets those grants survive updates. Without the keychain,
+`make-dmg.sh` falls back to an ad-hoc signature.
 
 ## Feature matrix
 
@@ -138,7 +150,7 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 | Hotkey swallow; browser ⏮ ⏭ (media keys) | **Accessibility** for the binary (`.build/debug/NotchIsland` from `swift run`) |
 | Now Playing, volume, dark mode | **Automation** → each player/browser and System Events (asked on first use) |
 | Browser Now Playing | Chrome/Brave/Edge: **View ▸ Developer ▸ Allow JavaScript from Apple Events**, once |
-| Notifications | Read access to `~/Library/Group Containers/group.com.apple.usernoted/` (Full Disk Access if the island shows the hint) |
+| Notifications | **Full Disk Access**: Notification Center's store under `~/Library/Group Containers/group.com.apple.usernoted/` is protected by macOS. The island and Settings ▸ Permissions show a hint until it is granted; relaunch afterwards |
 | Calendar | Asked when you press **Allow** in the shade |
 | Camera mirror | Asked when you first open the mirror |
 | Bluetooth connect activity | One-time Bluetooth prompt (deferred a few seconds after launch) |
@@ -167,7 +179,8 @@ Settings ▸ Permissions shows the current status with shortcuts to the right Sy
 
 ## Developer aids
 
-- `NOTCHISLAND_PREVIEW=shade|expanded|launcher|banner|activity swift run` opens that state on launch.
+- `NOTCHISLAND_PREVIEW=shade|expanded|launcher|banner|activity|settings swift run` opens that state on
+  launch; with `settings`, `NOTCHISLAND_SETTINGS_TAB=general|modules|visibility|permissions` picks the tab.
 - `NOTCHISLAND_DEMO=1` swaps the live media, notification and clipboard sources for sample content
   (no personal data), which is how the screenshots in `docs/assets` are made; `NOTCHISLAND_QUERY`
   pre-fills the launcher.

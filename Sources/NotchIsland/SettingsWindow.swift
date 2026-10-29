@@ -33,13 +33,26 @@ struct SettingsView: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var recording = false
     @State private var accent: Color = Theme.accent
+    @State private var perms = PermissionStatus()
+    @State private var tab = ProcessInfo.processInfo.environment["NOTCHISLAND_SETTINGS_TAB"] ?? "general"
+
+    /// Snapshot of what macOS currently lets us do; re-read while the window is open so a grant shows up.
+    private struct PermissionStatus {
+        var accessibility = AXIsProcessTrusted()
+        var calendar: Bool = {
+            let s = EKEventStore.authorizationStatus(for: .event)
+            if #available(macOS 14, *) { return s == .fullAccess }
+            return s == .authorized
+        }()
+        var fullDisk = NotificationWatcher.storeAccess().isUsable
+    }
 
     var body: some View {
-        TabView {
-            general.tabItem { Label("General", systemImage: "gearshape") }
-            modules.tabItem { Label("Modules", systemImage: "square.grid.2x2") }
-            visibility.tabItem { Label("Visibility", systemImage: "eye") }
-            permissions.tabItem { Label("Permissions", systemImage: "lock.shield") }
+        TabView(selection: $tab) {
+            general.tabItem { Label("General", systemImage: "gearshape") }.tag("general")
+            modules.tabItem { Label("Modules", systemImage: "square.grid.2x2") }.tag("modules")
+            visibility.tabItem { Label("Visibility", systemImage: "eye") }.tag("visibility")
+            permissions.tabItem { Label("Permissions", systemImage: "lock.shield") }.tag("permissions")
         }
         .frame(width: 540, height: 600)
     }
@@ -153,15 +166,17 @@ struct SettingsView: View {
     private var permissions: some View {
         Form {
             Section("Status") {
-                row("Accessibility (hotkey swallow, browser ⏮⏭)", ok: AXIsProcessTrusted(),
-                    pane: "com.apple.preference.security?Privacy_Accessibility")
-                row("Calendar", ok: {
-                    let s = EKEventStore.authorizationStatus(for: .event)
-                    if #available(macOS 14, *) { return s == .fullAccess }
-                    return s == .authorized
-                }(), pane: "com.apple.preference.security?Privacy_Calendars")
-                row("Full Disk Access (notification store)", ok: FileManager.default.isReadableFile(atPath: NotificationWatcher.databaseURL.path),
-                    pane: "com.apple.preference.security?Privacy_AllFiles")
+                row("Accessibility (hotkey swallow, browser ⏮⏭)", ok: perms.accessibility, pane: PrivacyPane.accessibility)
+                row("Calendar", ok: perms.calendar, pane: PrivacyPane.calendars)
+                row("Full Disk Access (notifications)", ok: perms.fullDisk, pane: PrivacyPane.fullDiskAccess)
+                if !perms.fullDisk {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Notifications come from Notification Center's own store, which macOS only opens for apps with Full Disk Access. In that list turn on NotchIsland (click + and pick it from Applications if it isn't there), then relaunch.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Relaunch NotchIsland") { QuickSystem.relaunch() }
+                    }
+                }
             }
             Section("Browser Now Playing") {
                 Text("Chrome / Brave / Edge: View ▸ Developer ▸ Allow JavaScript from Apple Events (once per browser).")
@@ -179,6 +194,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { perms = PermissionStatus() }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in perms = PermissionStatus() }
     }
 
     private func row(_ title: String, ok: Bool, pane: String) -> some View {
@@ -188,9 +205,7 @@ struct SettingsView: View {
             Text(title)
             Spacer()
             if !ok {
-                Button("Open Settings") {
-                    if let url = URL(string: "x-apple.systempreferences:\(pane)") { NSWorkspace.shared.open(url) }
-                }
+                Button("Open Settings") { PrivacyPane.open(pane) }
             }
         }
     }

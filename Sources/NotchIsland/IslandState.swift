@@ -33,7 +33,7 @@ final class IslandState: ObservableObject {
     @Published private(set) var latest: NotchNotification? { didSet { refreshLayout() } }
     @Published private(set) var recent: [NotchNotification] = []
     @Published private(set) var dismissed: Set<String> = []
-    @Published private(set) var hint: String? { didSet { refreshLayout() } }
+    @Published private(set) var hint: IslandHint? { didSet { refreshLayout() } }
     @Published private(set) var activity: LiveActivity? { didSet { refreshLayout() } }
     @Published private(set) var stickyActivity: LiveActivity? { didSet { refreshLayout() } }
     @Published private(set) var timerActive = false { didSet { refreshLayout() } }
@@ -63,7 +63,7 @@ final class IslandState: ObservableObject {
 
     private var bannerTimer: DispatchWorkItem?
     private var hoverWork: DispatchWorkItem?
-    private var notificationProblem: String?
+    private var notificationProblem: IslandHint?
     private var cancellables = Set<AnyCancellable>()
     private var running: Set<String> = []
 
@@ -240,7 +240,7 @@ final class IslandState: ObservableObject {
     }
 
     private func updateHint(mediaProblem: String?) {
-        let combined = mediaProblem ?? notificationProblem
+        let combined = mediaProblem.map { IslandHint(text: $0) } ?? notificationProblem
         if combined != hint { hint = combined }
     }
 

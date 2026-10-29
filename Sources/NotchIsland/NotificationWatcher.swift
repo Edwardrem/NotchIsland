@@ -59,11 +59,38 @@ final class NotificationWatcher {
     var onNotification: ((NotchNotification) -> Void)?
     /// Called once on the main thread at startup with notifications already in the Centre, newest first.
     var onHistory: (([NotchNotification]) -> Void)?
-    /// Called on the main thread with a human-readable problem, or nil when everything is fine.
-    var onStatus: ((String?) -> Void)?
+    /// Called on the main thread with the current problem (and the pane that fixes it), or nil when all is well.
+    var onStatus: ((IslandHint?) -> Void)?
 
     static let databaseURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Group Containers/group.com.apple.usernoted/db2/db")
+
+    /// Shown in the island and in Settings while the store can't be opened for lack of Full Disk Access.
+    static let fullDiskAccessHint = IslandHint(
+        text: "Notifications need Full Disk Access for NotchIsland.",
+        settingsPane: PrivacyPane.fullDiskAccess)
+
+    /// Whether this process can really read the store. The store lives in a TCC-protected folder:
+    /// `access(2)` (and so `FileManager.isReadableFile`) ignores TCC and says "readable" even without
+    /// Full Disk Access, so only a real `open(2)` tells the truth.
+    enum StoreAccess: Equatable {
+        case ok
+        case needsFullDiskAccess
+        case missing            // nothing has been delivered on this Mac yet, so the store doesn't exist
+        case failed(String)
+
+        var isUsable: Bool { self == .ok || self == .missing }
+    }
+
+    static func storeAccess() -> StoreAccess {
+        let fd = Darwin.open(databaseURL.path, O_RDONLY)
+        if fd >= 0 { Darwin.close(fd); return .ok }
+        switch errno {
+        case EPERM, EACCES: return .needsFullDiskAccess
+        case ENOENT: return .missing
+        default: return .failed(String(cString: strerror(errno)))
+        }
+    }
 
     private let queue = DispatchQueue(label: "NotchIsland.notifications", qos: .utility)
     private var db: OpaquePointer?
@@ -73,6 +100,8 @@ final class NotificationWatcher {
     private var timer: DispatchSourceTimer?
     private var walSource: DispatchSourceFileSystemObject?
     private var retryCount = 0
+    private var reported: IslandHint?
+    private var reportedOnce = false
 
     func start() {
         queue.async { [self] in
@@ -82,7 +111,6 @@ final class NotificationWatcher {
             t.setEventHandler { [weak self] in self?.tick() }
             t.resume()
             timer = t
-            watchWAL()
         }
     }
 
@@ -106,20 +134,36 @@ final class NotificationWatcher {
     private func openDatabase() {
         var handle: OpaquePointer?
         let path = Self.databaseURL.path
-        guard FileManager.default.isReadableFile(atPath: path) else {
-            report("Notifications: can't read Notification Center's database. Grant NotchIsland Full Disk Access.")
+        switch Self.storeAccess() {
+        case .ok:
+            break
+        case .needsFullDiskAccess:
+            report(Self.fullDiskAccessHint)
+            return
+        case .missing:
+            report(nil)                     // nothing to read yet; `tick` keeps trying
+            return
+        case .failed(let why):
+            report(IslandHint(text: "Notifications unavailable: \(why)"))
             return
         }
-        if sqlite3_open_v2(path, &handle, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil) == SQLITE_OK, let handle {
+        let rc = sqlite3_open_v2(path, &handle, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
+        if rc == SQLITE_OK, let handle {
             db = handle
             startDate = Date().timeIntervalSinceReferenceDate
             lastDate = startDate
             report(nil)
             loadHistory()
+            if walSource == nil { watchWAL() }
         } else {
             let message = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown error"
             sqlite3_close(handle)
-            report("Notifications unavailable: \(message)")
+            // Apple's SQLite surfaces a TCC refusal as SQLITE_AUTH ("authorization denied").
+            if rc == SQLITE_AUTH || rc == SQLITE_PERM || rc == SQLITE_CANTOPEN {
+                report(Self.fullDiskAccessHint)
+            } else {
+                report(IslandHint(text: "Notifications unavailable: \(message)"))
+            }
         }
     }
 
@@ -154,7 +198,12 @@ final class NotificationWatcher {
         poll()
     }
 
-    private func report(_ problem: String?) {
+    private func report(_ problem: IslandHint?) {
+        if !reportedOnce || problem != reported {
+            reportedOnce = true
+            reported = problem
+            NSLog("NotchIsland notifications: %@", problem?.text ?? "ok")
+        }
         DispatchQueue.main.async { self.onStatus?(problem) }
     }
 

@@ -47,9 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil, queue: .main
         ) { [weak self] _ in self?.panel.reposition() }
 
-        // NOTCHISLAND_PREVIEW=expanded|shade|launcher|banner|activity opens the island for screenshots
-        // and layout work. NOTCHISLAND_DEMO=1 swaps the live sources for sample data first (see
-        // IslandState.seedDemo); NOTCHISLAND_QUERY pre-fills the launcher.
+        // NOTCHISLAND_PREVIEW=expanded|shade|launcher|banner|activity|settings opens the island (or the
+        // Settings window, on the NOTCHISLAND_SETTINGS_TAB tab) for screenshots and layout work.
+        // NOTCHISLAND_DEMO=1 swaps the live sources for sample data first (see IslandState.seedDemo);
+        // NOTCHISLAND_QUERY pre-fills the launcher.
         let env = ProcessInfo.processInfo.environment
         let demo = env["NOTCHISLAND_DEMO"] == "1"
         if demo {
@@ -74,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 case "banner": self.state.demoBanner()
                 case "activity": self.state.demoActivity()
+                case "settings": SettingsWindowController.shared.show()
                 default: break
                 }
             }

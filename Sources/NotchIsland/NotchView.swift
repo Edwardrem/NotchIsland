@@ -211,16 +211,25 @@ struct NotchView: View {
         .onTapGesture { state.open(note) }
     }
 
-    private func hintRow(_ text: String) -> some View {
+    /// A problem line; when the hint names a System Settings pane, the whole row opens it.
+    private func hintRow(_ hint: IslandHint) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(UI.warning)
-            Text(text).font(UI.body(10.5)).foregroundStyle(.secondary).lineLimit(2)
+            Text(hint.text).font(UI.body(10.5)).foregroundStyle(.secondary).lineLimit(2)
             Spacer(minLength: 0)
+            if hint.settingsPane != nil {
+                Text("Open Settings")
+                    .font(UI.caption())
+                    .foregroundStyle(Theme.accent)
+                    .fixedSize()
+            }
         }
         .padding(.horizontal, 4)
-        .help(text)
+        .contentShape(Rectangle())
+        .onTapGesture { if let pane = hint.settingsPane { PrivacyPane.open(pane) } }
+        .help(hint.settingsPane == nil ? hint.text : "\(hint.text) Click to open System Settings.")
     }
 }
 
