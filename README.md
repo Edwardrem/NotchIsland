@@ -23,9 +23,15 @@ search and quick actions. Free, open source (MIT), macOS 13+, Apple silicon.
 
 1. Download [NotchIsland.dmg](https://github.com/Edwardrem/NotchIsland/raw/main/dist/NotchIsland.dmg)
    and drag **NotchIsland** into Applications.
-2. First launch: the app is signed with the project's own certificate, not a paid Developer ID, so
-   right-click ▸ **Open**. On macOS 15+ open it once, then System Settings ▸ Privacy & Security ▸
-   **Open Anyway**.
+2. First launch: macOS says *"Apple could not verify NotchIsland is free of malware"*. That is
+   Gatekeeper noticing the app is not notarized (it is signed with the project's own certificate,
+   not a paid Developer ID). To open it anyway:
+   - **macOS 15 and later**: click **Done**, then System Settings ▸ Privacy & Security ▸ scroll to
+     *"NotchIsland was blocked"* ▸ **Open Anyway** ▸ **Open**.
+   - **macOS 13 / 14**: right-click NotchIsland in Applications ▸ **Open** ▸ **Open**.
+   - Or from Terminal: `xattr -dr com.apple.quarantine /Applications/NotchIsland.app`
+
+   The DMG carries a *Read me first.txt* with the same steps.
 3. For notifications, give NotchIsland **Full Disk Access**: System Settings ▸ Privacy & Security ▸
    Full Disk Access ▸ turn on **NotchIsland** (click **+** and pick it from Applications if it is not
    listed), then relaunch. Until then the island shows a hint; click it to jump to that pane.
@@ -59,6 +65,23 @@ Releases are signed with a self-signed "NotchIsland Developer" certificate kept 
 grants such as Full Disk Access to the app's signature, and an ad-hoc signature changes with every
 build, so a stable identity is what lets those grants survive updates. Without the keychain,
 `make-dmg.sh` falls back to an ad-hoc signature.
+
+### Notarized builds (no Gatekeeper dialog)
+
+Only a notarized app opens without the *"could not verify"* dialog, and notarization needs a paid
+[Apple Developer Program](https://developer.apple.com/programs/) membership. Once you have one:
+
+1. Create a **Developer ID Application** certificate (Xcode ▸ Settings ▸ Accounts ▸ Manage
+   Certificates, or developer.apple.com ▸ Certificates) so it is in your login keychain.
+2. Store notarization credentials once, using an app-specific password from appleid.apple.com:
+   `xcrun notarytool store-credentials NotchIsland --apple-id you@example.com --team-id TEAMID --password app-specific-password`
+3. Build: `NOTARY_PROFILE=NotchIsland scripts/make-dmg.sh 1.0.2`
+
+`make-dmg.sh` then signs with the hardened runtime and `Resources/NotchIsland.entitlements`,
+notarizes and staples both the app and the DMG. This path is written to Apple's documented flow but
+has not been exercised yet (no Developer ID on hand). Switching identities changes the app's code
+requirement, so users grant Full Disk Access and Accessibility once more after that first notarized
+release.
 
 ## Feature matrix
 

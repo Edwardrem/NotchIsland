@@ -136,6 +136,7 @@
   .card h3 { margin: 0 0 6px; font-size: 17px; letter-spacing: -.01em; }
   .card p { margin: 0; color: var(--muted); font-size: 15px; }
   kbd { font-family: var(--font); font-size: .85em; padding: 1px 7px; border-radius: 6px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.12); }
+  p code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); white-space: nowrap; }
 
   /* ---------- states gallery ---------- */
   .states { display: grid; grid-template-columns: repeat(6, 1fr); gap: 18px; }
@@ -354,14 +355,14 @@
         </div>
         <div class="step">
           <h3>Open it the first time</h3>
-          <p>Right-click NotchIsland in Applications and choose <b>Open</b>. On macOS 15 and later, open it once, then allow it in System Settings → Privacy &amp; Security → <b>Open Anyway</b>.</p>
+          <p>macOS will say it "could not verify NotchIsland is free of malware": the app is not notarized. On macOS 15 and later click <b>Done</b>, then System Settings → Privacy &amp; Security → scroll to "NotchIsland was blocked" → <b>Open Anyway</b>. On macOS 13 and 14, right-click NotchIsland in Applications → <b>Open</b>. Or in Terminal: <code>xattr -dr com.apple.quarantine /Applications/NotchIsland.app</code></p>
         </div>
         <div class="step">
           <h3>Grant what you use</h3>
           <p>Full Disk Access for notifications: System Settings → Privacy &amp; Security → Full Disk Access → turn on NotchIsland, then relaunch. The island shows a hint until then; click it to jump there. Accessibility for the hotkey, Automation the first time a player is read, Calendar and Camera when you first use them. Settings → Permissions shows the state of each.</p>
         </div>
       </div>
-      <div class="note"><b>Why the extra click?</b> NotchIsland is open source and signed with its own certificate rather than a paid Apple Developer ID, so Gatekeeper asks you to confirm the first launch. You can also build it yourself in under a minute: see below.</div>
+      <div class="note"><b>Why the extra click?</b> Only apps notarized through a paid Apple Developer ID open silently. NotchIsland is free and open source and signed with its own certificate, so Gatekeeper asks you to confirm the first launch, once. The DMG includes a "Read me first" with the same steps. You can also build it yourself in under a minute: see below.</div>
     </div>
   </section>
 

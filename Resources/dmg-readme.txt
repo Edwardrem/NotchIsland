@@ -1,0 +1,26 @@
+NotchIsland - first launch
+==========================
+
+1. Drag NotchIsland into Applications.
+
+2. macOS will say "Apple could not verify NotchIsland is free of malware".
+   That is Gatekeeper noticing the app is not notarized: NotchIsland is free and
+   open source and is signed with its own certificate, not a paid Apple
+   Developer ID. To open it anyway:
+
+   macOS 15 Sequoia and later
+     - Click Done.
+     - System Settings > Privacy & Security > scroll down to
+       "NotchIsland was blocked" > Open Anyway > Open.
+
+   macOS 13 and 14
+     - Right-click NotchIsland in Applications > Open > Open.
+
+   Or from Terminal (clears the download flag macOS uses to show the warning):
+     xattr -dr com.apple.quarantine /Applications/NotchIsland.app
+
+3. For notifications, give NotchIsland Full Disk Access:
+   System Settings > Privacy & Security > Full Disk Access > turn on NotchIsland
+   (click + and pick it from Applications if it is not listed), then relaunch.
+
+Source, issues and releases: https://github.com/Edwardrem/NotchIsland
