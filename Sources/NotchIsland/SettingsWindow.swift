@@ -113,7 +113,7 @@ struct SettingsView: View {
     private var modules: some View {
         Form {
             Section("Live activities") {
-                Toggle("Now Playing (Music, Spotify, VLC, Chrome/Brave/Edge)", isOn: $settings.mediaEnabled)
+                Toggle("Now Playing (Music, Spotify, VLC, Safari and Chromium browsers)", isOn: $settings.mediaEnabled)
                 Toggle("Notifications (banner + shade)", isOn: $settings.notificationsEnabled)
                 Toggle("Volume HUD", isOn: $settings.volumeHUDEnabled)
                 Toggle("Battery: charger and low-battery alerts", isOn: $settings.batteryAlertsEnabled)
@@ -179,8 +179,12 @@ struct SettingsView: View {
                 }
             }
             Section("Browser Now Playing") {
-                Text("Chrome / Brave / Edge: View ▸ Developer ▸ Allow JavaScript from Apple Events (once per browser).")
+                Text("Chrome, Brave, Edge, Arc, Vivaldi, Opera: View ▸ Developer ▸ Allow JavaScript from Apple Events (once per browser).")
                     .font(.caption)
+                Text("Safari: Settings ▸ Advanced ▸ Show features for web developers, then Develop ▸ Developer Settings ▸ Allow JavaScript from Apple Events.")
+                    .font(.caption)
+                Text("Every tab with media is a source. The island follows whichever stream started most recently and lists the others as chips in the card; tap one to switch. Firefox has no scripting bridge.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Shortcuts integration") {
                 Text("Push a custom live activity by writing JSON to:")

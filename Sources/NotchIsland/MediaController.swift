@@ -2,39 +2,50 @@ import AppKit
 import Combine
 import CoreGraphics
 
-/// A snapshot of what a player is doing.
+/// A snapshot of one stream: a desktop player, or one browser tab with media in it. Every stream
+/// the controller can see is its own `NowPlaying`; `sourceKey` identifies it from poll to poll.
 struct NowPlaying: Equatable {
-    enum Player: String, CaseIterable {
-        case music = "com.apple.Music"
-        case spotify = "com.spotify.client"
-        case vlc = "org.videolan.vlc"
-        case chrome = "com.google.Chrome"
-        case brave = "com.brave.Browser"
-        case edge = "com.microsoft.edgemac"
+    /// An app NotchIsland can read: a scriptable desktop player, a Chromium browser or Safari.
+    struct Player: Hashable {
+        enum Kind: Hashable { case music, spotify, vlc, chromium, safari }
 
-        var name: String {
-            switch self {
-            case .music: return "Music"
-            case .spotify: return "Spotify"
-            case .vlc: return "VLC"
-            case .chrome: return "Google Chrome"
-            case .brave: return "Brave Browser"
-            case .edge: return "Microsoft Edge"
-            }
-        }
+        let bundleID: String
+        let kind: Kind
+        let name: String      // "Google Chrome": for "Open …" and the card caption
+        let label: String     // "Chrome": for chips and hints
 
-        /// A short label for the UI.
-        var label: String {
-            switch self {
-            case .chrome: return "Chrome"
-            case .brave: return "Brave"
-            case .edge: return "Edge"
-            default: return name
-            }
-        }
+        var isBrowser: Bool { kind == .chromium || kind == .safari }
 
-        /// Chromium browsers share one scripting dictionary and read media through page JavaScript.
-        var isBrowser: Bool { self == .chrome || self == .brave || self == .edge }
+        /// Where the browser keeps its "Allow JavaScript from Apple Events" switch.
+        var javaScriptSwitch: String { kind == .safari ? "Develop ▸ Developer Settings" : "View ▸ Developer" }
+
+        static let music = Player(bundleID: "com.apple.Music", kind: .music, name: "Music", label: "Music")
+        static let spotify = Player(bundleID: "com.spotify.client", kind: .spotify, name: "Spotify", label: "Spotify")
+        static let vlc = Player(bundleID: "org.videolan.vlc", kind: .vlc, name: "VLC", label: "VLC")
+        static let safari = Player(bundleID: "com.apple.Safari", kind: .safari, name: "Safari", label: "Safari")
+        static let chrome = Player(bundleID: "com.google.Chrome", kind: .chromium, name: "Google Chrome", label: "Chrome")
+        static let brave = Player(bundleID: "com.brave.Browser", kind: .chromium, name: "Brave Browser", label: "Brave")
+        static let edge = Player(bundleID: "com.microsoft.edgemac", kind: .chromium, name: "Microsoft Edge", label: "Edge")
+
+        /// Everything that is polled, in display order. Every Chromium browser shares Chrome's
+        /// scripting dictionary, so each channel of Chrome, Brave and Edge plus Arc, Vivaldi, Opera
+        /// and Chromium are read the same way. Firefox has no scripting bridge at all.
+        static let known: [Player] = [
+            music, spotify, vlc, safari, chrome, brave, edge,
+            Player(bundleID: "company.thebrowser.Browser", kind: .chromium, name: "Arc", label: "Arc"),
+            Player(bundleID: "com.vivaldi.Vivaldi", kind: .chromium, name: "Vivaldi", label: "Vivaldi"),
+            Player(bundleID: "com.operasoftware.Opera", kind: .chromium, name: "Opera", label: "Opera"),
+            Player(bundleID: "com.operasoftware.OperaGX", kind: .chromium, name: "Opera GX", label: "Opera GX"),
+            Player(bundleID: "org.chromium.Chromium", kind: .chromium, name: "Chromium", label: "Chromium"),
+            Player(bundleID: "com.google.Chrome.beta", kind: .chromium, name: "Google Chrome Beta", label: "Chrome Beta"),
+            Player(bundleID: "com.google.Chrome.dev", kind: .chromium, name: "Google Chrome Dev", label: "Chrome Dev"),
+            Player(bundleID: "com.google.Chrome.canary", kind: .chromium, name: "Google Chrome Canary", label: "Chrome Canary"),
+            Player(bundleID: "com.brave.Browser.beta", kind: .chromium, name: "Brave Browser Beta", label: "Brave Beta"),
+            Player(bundleID: "com.brave.Browser.nightly", kind: .chromium, name: "Brave Browser Nightly", label: "Brave Nightly"),
+            Player(bundleID: "com.microsoft.edgemac.Beta", kind: .chromium, name: "Microsoft Edge Beta", label: "Edge Beta"),
+            Player(bundleID: "com.microsoft.edgemac.Dev", kind: .chromium, name: "Microsoft Edge Dev", label: "Edge Dev"),
+            Player(bundleID: "com.microsoft.edgemac.Canary", kind: .chromium, name: "Microsoft Edge Canary", label: "Edge Canary"),
+        ]
     }
 
     var player: Player
@@ -48,7 +59,13 @@ struct NowPlaying: Equatable {
     var artworkHint: String      // Spotify/browser: artwork URL; VLC: file path
     var artwork: NSImage?
     var sampledAt: Date
-    var sourceTabID: String = "" // browser: the tab to send commands to
+    var isMuted = false          // browser: the element is muted, so it ranks under audible streams
+    var sourceTabID: String = "" // browser: the tab to send commands to (Safari: "windowID:index")
+    var sourceHost: String = ""  // browser: the page's host ("youtube.com"), to tell twin tabs apart
+
+    /// Identifies the stream across polls: the app, plus the tab for browsers.
+    var sourceKey: String { "\(player.bundleID)|\(sourceTabID)" }
+    var icon: NSImage { AppIconCache.icon(for: player.bundleID) }
 
     /// Elapsed time extrapolated from the last sample, so the progress bar moves between polls.
     var liveElapsed: TimeInterval {
@@ -64,6 +81,7 @@ struct NowPlaying: Equatable {
     static func == (a: NowPlaying, b: NowPlaying) -> Bool {
         a.player == b.player && a.trackID == b.trackID && a.title == b.title &&
         a.artist == b.artist && a.album == b.album && a.isPlaying == b.isPlaying &&
+        a.isMuted == b.isMuted && a.sourceTabID == b.sourceTabID &&
         Int(a.elapsed) == Int(b.elapsed) && Int(a.duration) == Int(b.duration) &&
         a.artwork === b.artwork
     }
@@ -71,13 +89,19 @@ struct NowPlaying: Equatable {
 
 /// Reads and controls what's playing, and the system output volume.
 ///
-/// Scriptable desktop players (Music, Spotify, VLC) are read directly over AppleScript.
-/// Chromium browsers (Chrome, Brave, Edge) are read by executing a little JavaScript in their
-/// tabs — which the user must allow once (View ▸ Developer ▸ Allow JavaScript from Apple Events);
+/// Scriptable desktop players (Music, Spotify, VLC) are read directly over AppleScript. Browsers
+/// are read by running a little JavaScript in every tab, which the user must allow once (Chromium:
+/// View ▸ Developer ▸ Allow JavaScript from Apple Events; Safari: Develop ▸ Developer Settings);
 /// until then the island shows a hint. Apple's system-wide MediaRemote feed is not available to
 /// third-party processes on current macOS, so this covers the players we can actually reach.
+///
+/// Every stream found is published in `sources`. The island follows the *active* one: whichever
+/// stream started playing most recently, audible before muted; when nothing plays it stays on the
+/// stream it was showing. Picking a chip in the card pins that stream until a new one starts.
 final class MediaController: ObservableObject {
     @Published private(set) var nowPlaying: NowPlaying?
+    /// Every stream found on the last poll, in player order; the cards list them for switching.
+    @Published private(set) var sources: [NowPlaying] = []
     @Published private(set) var problem: String?
     /// System output volume, 0...1. Global: it moves whatever is making sound, browser included.
     @Published var systemVolume: Double = 0.5
@@ -88,15 +112,31 @@ final class MediaController: ObservableObject {
     private var scripts: [String: NSAppleScript] = [:]
     private var artworkCache: [String: NSImage?] = [:]
     private var pendingArtwork: [String: Data] = [:]
-    private var preferred: NowPlaying.Player?
     private var denied: Set<NowPlaying.Player> = []        // Automation permission declined
     private var browserJS: [NowPlaying.Player: Bool] = [:] // nil unknown, false off, true on
     private var reportedErrors: Set<Int> = []
     private var pendingVolume: Int?
     private var volumeHeldUntil = Date.distantPast
     private var volumeInitialized = false
+    // Which stream the island follows (all touched on `queue` only).
+    private var playingSince: [String: Date] = [:]  // sourceKey → when it last went from paused to playing
+    private var lastActive: [String: Date] = [:]    // sourceKey → when it was last seen playing
+    private var lastSeen: [String: Date] = [:]      // sourceKey → when it was last seen at all
+    private var currentKey: String?
+    private var pinned: (key: String, at: Date)?    // the user's pick, until a newer stream starts
+    private var lastPick: NowPlaying?
+    private var lastList: [NowPlaying] = []
+    private var lastLog = ""
+    private let logging = ProcessInfo.processInfo.environment["NOTCHISLAND_MEDIA_LOG"] != nil
     /// Fired (main thread) when the system volume changes from outside the island, e.g. the volume keys.
     var onVolumeChanged: ((Double) -> Void)?
+
+    /// How long a stream may be missing from a poll before it is forgotten. One AppleScript hiccup
+    /// must not make a long-running stream look freshly started and steal the island.
+    private static let graceInterval: TimeInterval = 15
+    /// How long the island keeps showing a stream that a poll missed before it moves on. A browser
+    /// whose walk failed this second (a tab was closing, a page hung) must not flip the island.
+    private static let holdInterval: TimeInterval = 2.5
 
     func start() {
         queue.async { [self] in
@@ -112,13 +152,27 @@ final class MediaController: ObservableObject {
         queue.async { [self] in
             timer?.cancel()
             timer = nil
-            DispatchQueue.main.async { self.nowPlaying = nil }
+            DispatchQueue.main.async {
+                self.nowPlaying = nil
+                self.sources = []
+            }
         }
     }
 
     deinit { timer?.cancel() }
 
     // MARK: - Transport (call on the main thread)
+
+    /// Shows `source` in the island and keeps it there until another stream starts playing.
+    func select(_ source: NowPlaying) {
+        guard source.sourceKey != nowPlaying?.sourceKey else { return }
+        nowPlaying = source                                // optimistic; the next poll adds artwork
+        queue.async { [self] in
+            pinned = (source.sourceKey, Date())
+            currentKey = source.sourceKey
+            poll()
+        }
+    }
 
     func togglePlayPause() {
         guard var np = nowPlaying else { return }
@@ -159,8 +213,13 @@ final class MediaController: ObservableObject {
         }
     }
 
+    /// Brings the player forward; for a browser stream, the tab it plays in.
     func openPlayer() {
-        guard let player = nowPlaying?.player, let url = AppIconCache.url(for: player.rawValue) else { return }
+        guard let np = nowPlaying else { return }
+        if np.player.isBrowser, !np.sourceTabID.isEmpty {
+            queue.async { [self] in run(Self.revealTabScript(for: np), cacheKey: nil, player: np.player) }
+        }
+        guard let url = AppIconCache.url(for: np.player.bundleID) else { return }
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.openApplication(at: url, configuration: config)
@@ -169,30 +228,16 @@ final class MediaController: ObservableObject {
     private func send(_ verb: String, to player: NowPlaying.Player, cache: Bool = true) {
         queue.async { [self] in
             run("tell application \"\(player.name)\" to \(verb)",
-                cacheKey: cache ? "cmd:\(player.rawValue):\(verb)" : nil, player: player)
+                cacheKey: cache ? "cmd:\(player.bundleID):\(verb)" : nil, player: player)
             queue.asyncAfter(deadline: .now() + 0.3) { self.poll() }
         }
     }
 
     private func runBrowserCommand(_ np: NowPlaying, js: String) {
         guard !np.sourceTabID.isEmpty else { return }
-        let name = np.player.name, tab = np.sourceTabID, player = np.player
+        let player = np.player
         queue.async { [self] in
-            let src = """
-            tell application "\(name)"
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        try
-                            if (id of t) is \(tab) then
-                                execute t javascript "\(js)"
-                                return
-                            end if
-                        end try
-                    end repeat
-                end repeat
-            end tell
-            """
-            run(src, cacheKey: nil, player: player)
+            run(Self.browserCommandScript(for: np, js: js), cacheKey: nil, player: player)
             queue.asyncAfter(deadline: .now() + 0.3) { self.poll() }
         }
     }
@@ -201,39 +246,103 @@ final class MediaController: ObservableObject {
 
     private func poll() {
         tick &+= 1
-        var candidates: [NowPlaying] = []
-
-        for player in NowPlaying.Player.allCases where !denied.contains(player) && isRunning(player) {
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        var found: [NowPlaying] = []
+        for player in NowPlaying.Player.known where running.contains(player.bundleID) && !denied.contains(player) {
             if player.isBrowser {
-                if let np = pollBrowser(player) { candidates.append(np) }
+                found += pollBrowser(player)
             } else if let np = query(player) {
-                candidates.append(np)
+                found.append(np)
             }
         }
 
-        var pick = candidates.first { $0.isPlaying }
-            ?? candidates.first { $0.player == preferred }
-            ?? candidates.first
-        if let chosen = pick {
-            preferred = chosen.player
+        var (pick, list) = choose(from: found)
+        if let chosen = pick, chosen.artwork == nil {
             pick?.artwork = artwork(for: chosen)
+            lastPick?.artwork = pick?.artwork
         }
+        if logging { log(list, pick) }
         DispatchQueue.main.async {
+            if self.sources != list { self.sources = list }
             if self.nowPlaying != pick { self.nowPlaying = pick }
         }
-        updateProblem()
+        updateProblem(running: running)
         pollVolume()
     }
 
-    private func isRunning(_ player: NowPlaying.Player) -> Bool {
-        !NSRunningApplication.runningApplications(withBundleIdentifier: player.rawValue).isEmpty
+    /// The stream the island follows, with the list to show as chips. Rules, in order: hold the
+    /// current stream through a missed poll; the user's pick while it exists and nothing newer has
+    /// started; the playing stream that started most recently (audible before muted); the stream
+    /// shown so far, if it is still there; the stream that played most recently.
+    private func choose(from found: [NowPlaying]) -> (NowPlaying?, [NowPlaying]) {
+        let now = Date()
+        var present = Set<String>()
+        for np in found {
+            let key = np.sourceKey
+            present.insert(key)
+            lastSeen[key] = now
+            if np.isPlaying {
+                if playingSince[key] == nil { playingSince[key] = now }
+                lastActive[key] = now
+            } else {
+                playingSince[key] = nil
+            }
+        }
+        for (key, seen) in lastSeen where now.timeIntervalSince(seen) > Self.graceInterval {
+            lastSeen[key] = nil
+            lastActive[key] = nil
+            playingSince[key] = nil
+        }
+
+        if let key = currentKey, !present.contains(key), let held = lastPick,
+           let seen = lastSeen[key], now.timeIntervalSince(seen) < Self.holdInterval {
+            return (held, lastList)
+        }
+
+        func since(_ np: NowPlaying) -> Date { playingSince[np.sourceKey] ?? now }
+        var pick: NowPlaying?
+        if let pin = pinned {
+            let newer = found.contains { $0.isPlaying && $0.sourceKey != pin.key && since($0) > pin.at }
+            if !present.contains(pin.key) || newer {
+                pinned = nil
+            } else {
+                pick = found.first { $0.sourceKey == pin.key }
+            }
+        }
+        if pick == nil {
+            let playing = found.filter(\.isPlaying)
+            if !playing.isEmpty {
+                pick = playing.max { a, b in (a.isMuted ? 0 : 1, since(a)) < (b.isMuted ? 0 : 1, since(b)) }
+            } else if let key = currentKey, let same = found.first(where: { $0.sourceKey == key }) {
+                pick = same
+            } else {
+                pick = found.max { a, b in
+                    (lastActive[a.sourceKey] ?? .distantPast) < (lastActive[b.sourceKey] ?? .distantPast)
+                } ?? found.first
+            }
+        }
+        currentKey = pick?.sourceKey
+        lastPick = pick
+        lastList = found
+        return (pick, found)
+    }
+
+    private func log(_ found: [NowPlaying], _ pick: NowPlaying?) {
+        let list = found.map {
+            "\($0.player.label)#\($0.sourceTabID.isEmpty ? "app" : $0.sourceTabID) \($0.isPlaying ? "playing" : "paused")\($0.isMuted ? " muted" : "") \"\($0.title)\""
+        }.joined(separator: " | ")
+        let text = "sources [\(list)] -> \(pick.map { "\($0.player.label) \"\($0.title)\"" } ?? "none")\(pinned == nil ? "" : " (pinned)")\(pick != nil && !found.contains { $0.sourceKey == pick?.sourceKey } ? " (held)" : "")"
+        if text != lastLog {
+            lastLog = text
+            NSLog("NotchIsland media: %@", text)
+        }
     }
 
     // MARK: - App players
 
     private func query(_ player: NowPlaying.Player) -> NowPlaying? {
         guard let output = run(Self.statusScript(for: player),
-                               cacheKey: "status:\(player.rawValue)", player: player)?.stringValue
+                               cacheKey: "status:\(player.bundleID)", player: player)?.stringValue
         else { return nil }
         let lines = output.components(separatedBy: "\n")
         guard lines.count >= 8, lines[0] != "stopped" else { return nil }
@@ -248,39 +357,61 @@ final class MediaController: ObservableObject {
 
     // MARK: - Browser players
 
-    private func pollBrowser(_ player: NowPlaying.Player) -> NowPlaying? {
-        // Until we know JavaScript-from-Apple-Events is on, probe (without a try that would hide
-        // the "turned off" error) every few ticks so the hint can appear or clear.
-        if browserJS[player] != true, tick % 4 == 0 {
-            if run("tell application \"\(player.name)\" to execute (active tab of front window) javascript \"1\"",
-                   cacheKey: "probe:\(player.rawValue)", player: player) != nil {
-                browserJS[player] = true
-            }
-        }
-        guard browserJS[player] == true else { return nil }
-
+    /// Runs the status JavaScript in every tab of the browser and returns one stream per tab that
+    /// has media. The first line of the script's answer counts the tabs that ran JavaScript; the
+    /// rest are "<tab id> <json>" lines, or "! <code> <message>" for tabs that refused.
+    private func pollBrowser(_ player: NowPlaying.Player) -> [NowPlaying] {
+        // While the browser's JavaScript switch is off, look again every few seconds so the hint
+        // clears as soon as the user turns it on.
+        guard browserJS[player] != false || tick % 4 == 0 else { return [] }
         guard let output = run(Self.browserStatusScript(for: player),
-                               cacheKey: "status:\(player.rawValue)", player: player)?.stringValue,
-              !output.isEmpty else { return nil }
-        browserJS[player] = true   // it answered
+                               cacheKey: "status:\(player.bundleID)", player: player)?.stringValue
+        else { return [] }
 
-        let parts = output.components(separatedBy: "\n")
-        guard let json = parts.first, let data = json.data(using: .utf8),
+        var lines = output.components(separatedBy: "\n")
+        let ran = Int(lines.removeFirst().trimmingCharacters(in: .whitespaces)) ?? 0
+        var streams: [NowPlaying] = []
+        var switchedOff = false
+        for line in lines where !line.isEmpty {
+            if line.hasPrefix("! ") {
+                if Self.isJavaScriptOff(line) { switchedOff = true }
+                continue
+            }
+            guard let space = line.firstIndex(of: " ") else { continue }
+            let tab = String(line[..<space])
+            let json = String(line[line.index(after: space)...])
+            if let np = Self.parseBrowserStream(json, player: player, tab: tab) { streams.append(np) }
+        }
+        if ran > 0 { browserJS[player] = true } else if switchedOff { browserJS[player] = false }
+        return streams
+    }
+
+    private static func parseBrowserStream(_ json: String, player: NowPlaying.Player, tab: String) -> NowPlaying? {
+        guard let data = json.data(using: .utf8),
               let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else { return nil }
-        let tab = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespaces) : ""
         let title = (d["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
         let artist = (d["artist"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let album = (d["album"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { return nil }
         let playing = (d["playing"] as? Bool) ?? false
+        let muted = (d["muted"] as? Bool) ?? false
         let pos = (d["pos"] as? NSNumber)?.doubleValue ?? 0
         let dur = (d["dur"] as? NSNumber)?.doubleValue ?? 0
         let art = (d["art"] as? String) ?? ""
+        let host = (d["host"] as? String) ?? ""
         return NowPlaying(player: player, title: title, artist: artist, album: album,
                           isPlaying: playing, elapsed: pos, duration: dur,
                           trackID: "\(tab)|\(title)", artworkHint: art, artwork: nil,
-                          sampledAt: Date(), sourceTabID: tab)
+                          sampledAt: Date(), isMuted: muted, sourceTabID: tab, sourceHost: host)
+    }
+
+    /// Chromium: "Executing JavaScript through AppleScript is turned off. … View > Developer > Allow
+    /// JavaScript from Apple Events". Safari: "You must enable 'Allow JavaScript from Apple Events'
+    /// in the Developer section of Safari Settings to use 'do JavaScript'."
+    private static func isJavaScriptOff(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("javascript") && (lower.contains("turned off") || lower.contains("apple events"))
     }
 
     // MARK: - Artwork
@@ -288,7 +419,7 @@ final class MediaController: ObservableObject {
     private func artwork(for np: NowPlaying) -> NSImage? {
         // A track whose duration is still unknown has not finished loading (streaming), and Music
         // may still report the previous cover for it; keying on that re-fetches once it loads.
-        let key = "\(np.player.rawValue)|\(np.trackID)|\(np.duration > 0)"
+        let key = "\(np.player.bundleID)|\(np.trackID)|\(np.duration > 0)"
         if let cached = artworkCache[key] { return cached }
         var image: NSImage?
         var confirmed = true
@@ -386,9 +517,7 @@ final class MediaController: ObservableObject {
     }
 
     private func handle(code: Int, message: String, player: NowPlaying.Player) {
-        let lower = message.lowercased()
-        if player.isBrowser, lower.contains("javascript"),
-           lower.contains("turned off") || lower.contains("apple events") {
+        if player.isBrowser, Self.isJavaScriptOff(message) {
             browserJS[player] = false   // the user hasn't allowed JS from Apple Events yet
             return
         }
@@ -408,19 +537,22 @@ final class MediaController: ObservableObject {
         }
     }
 
-    /// Builds the hint shown in the island: Automation first, then the browser JS toggle.
-    private func updateProblem() {
+    /// Builds the hint shown in the island: Automation first, then the browser JS switch.
+    private func updateProblem(running: Set<String>) {
         var text: String?
         if !denied.isEmpty {
             let names = denied.map(\.label).sorted().joined(separator: ", ")
             text = "Allow NotchIsland to control \(names) in System Settings → Privacy & Security → Automation."
         } else {
-            let off = NowPlaying.Player.allCases.filter {
-                $0.isBrowser && isRunning($0) && browserJS[$0] == false
+            let off = NowPlaying.Player.known.filter {
+                $0.isBrowser && running.contains($0.bundleID) && browserJS[$0] == false
             }
             if !off.isEmpty {
-                let names = off.map(\.label).joined(separator: " / ")
-                text = "Playing in \(names)? Turn on ‘Allow JavaScript from Apple Events’ (\(off[0].label) ▸ View ▸ Developer)."
+                let names = off.map(\.label).joined(separator: " or ")
+                let paths = off.count == 1
+                    ? off[0].javaScriptSwitch
+                    : off.map { "\($0.label): \($0.javaScriptSwitch)" }.joined(separator: " · ")
+                text = "Playing in \(names)? Turn on ‘Allow JavaScript from Apple Events’ (\(paths))."
             }
         }
         DispatchQueue.main.async {
@@ -437,35 +569,136 @@ final class MediaController: ObservableObject {
     /// JS (no double quotes, so it nests inside the AppleScript string) that toggles the page's media.
     static let toggleJS = "(function(){var e=[].slice.call(document.querySelectorAll('video,audio'));var m=e.filter(function(x){return !x.paused;})[0]||e.filter(function(x){return x.readyState>2;})[0];if(m){if(m.paused){m.play();}else{m.pause();}}})()"
 
-    /// JS that reports the first playing (or loaded) media element as compact JSON, or ''.
-    static let statusJS = "(function(){var e=[].slice.call(document.querySelectorAll('video,audio'));var m=e.filter(function(x){return !x.paused&&x.currentTime>0;})[0]||e.filter(function(x){return x.readyState>2;})[0];if(!m)return '';var s=(navigator.mediaSession&&navigator.mediaSession.metadata)||{};var a='';try{if(s.artwork&&s.artwork.length){a=s.artwork[s.artwork.length-1].src;}}catch(err){}var d=isFinite(m.duration)?Math.floor(m.duration):0;return JSON.stringify({playing:!m.paused,pos:Math.floor(m.currentTime||0),dur:d,title:(s.title||document.title||''),artist:(s.artist||''),album:(s.album||''),art:a});})()"
+    /// JS that reports the page's main media element as compact JSON, or '' when the page has no
+    /// stream worth showing. Elements that never played are skipped (YouTube's hover previews, blocked
+    /// autoplay), as are muted looping decorations without controls (landing-page hero videos).
+    /// Among the rest: audible playing, then muted playing, then paused with the most progress.
+    static let statusJS = "(function(){var e=[].slice.call(document.querySelectorAll('video,audio'));var best=null,bs=-1;for(var i=0;i<e.length;i++){var x=e[i];var ct=x.currentTime||0;var playing=!x.paused&&!x.ended&&ct>0;var muted=!!(x.muted||x.volume===0);if(!playing&&!(ct>0))continue;if(playing&&muted&&x.loop&&!x.controls)continue;var sc=(playing?(muted?2:3):1)*1e9+Math.min(ct,1e8);if(sc>bs){bs=sc;best=x;}}if(!best)return '';var m=best;var s=(navigator.mediaSession&&navigator.mediaSession.metadata)||{};var a='';try{if(s.artwork&&s.artwork.length){a=s.artwork[s.artwork.length-1].src;}}catch(err){}var d=isFinite(m.duration)?Math.floor(m.duration):0;var h=(location.hostname||'');if(h.indexOf('www.')===0){h=h.slice(4);}return JSON.stringify({playing:!m.paused&&!m.ended,muted:!!(m.muted||m.volume===0),pos:Math.floor(m.currentTime||0),dur:d,title:(s.title||document.title||''),artist:(s.artist||''),album:(s.album||''),art:a,host:h});})()"
 
-    /// Walks a Chromium browser's tabs, returns the first media tab's JSON plus its tab id.
+    /// Walks every tab of the browser and answers: a count of tabs that ran JavaScript, then one
+    /// "<tab id> <json>" line per tab with media (or "! <code> <message>" for a tab that refused).
+    /// Each tab gets at most 3 s, so one stuck page cannot freeze the island for a minute.
     static func browserStatusScript(for player: NowPlaying.Player) -> String {
-        """
-        tell application "\(player.name)"
-            set theResult to ""
-            repeat with w in windows
-                repeat with t in tabs of w
+        if player.kind == .safari {
+            return """
+            tell application id "com.apple.Safari"
+                set okCount to 0
+                set out to ""
+                with timeout of 3 seconds
+                    repeat with w in windows
+                        try
+                            set wid to id of w
+                            set i to 0
+                            repeat with t in tabs of w
+                                set i to i + 1
+                                try
+                                    set r to do JavaScript "\(statusJS)" in t
+                                    set okCount to okCount + 1
+                                    if r is not missing value and r is not "" then
+                                        set out to out & (wid as text) & ":" & i & " " & r & linefeed
+                                    end if
+                                on error errMsg number errNum
+                                    set out to out & "! " & errNum & " " & errMsg & linefeed
+                                end try
+                            end repeat
+                        end try
+                    end repeat
+                end timeout
+                return (okCount as text) & linefeed & out
+            end tell
+            """
+        }
+        return """
+        tell application id "\(player.bundleID)"
+            set okCount to 0
+            set out to ""
+            with timeout of 3 seconds
+                repeat with w in windows
                     try
-                        set r to execute t javascript "\(statusJS)"
-                        if r is not missing value and r is not "" then
-                            set theResult to r & linefeed & (id of t)
-                            exit repeat
+                        repeat with t in tabs of w
+                            try
+                                set r to execute t javascript "\(statusJS)"
+                                set okCount to okCount + 1
+                                if r is not missing value and r is not "" then
+                                    set out to out & ((id of t) as text) & " " & r & linefeed
+                                end if
+                            on error errMsg number errNum
+                                set out to out & "! " & errNum & " " & errMsg & linefeed
+                            end try
+                        end repeat
+                    end try
+                end repeat
+            end timeout
+            return (okCount as text) & linefeed & out
+        end tell
+        """
+    }
+
+    /// Runs `js` in the stream's own tab.
+    static func browserCommandScript(for np: NowPlaying, js: String) -> String {
+        if np.player.kind == .safari {
+            let (wid, index) = safariTab(np.sourceTabID)
+            return "tell application id \"com.apple.Safari\" to do JavaScript \"\(js)\" in tab \(index) of window id \(wid)"
+        }
+        return """
+        tell application id "\(np.player.bundleID)"
+            with timeout of 3 seconds
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        try
+                            if ((id of t) as text) is "\(np.sourceTabID)" then
+                                execute t javascript "\(js)"
+                                return
+                            end if
+                        end try
+                    end repeat
+                end repeat
+            end timeout
+        end tell
+        """
+    }
+
+    /// Makes the stream's tab the active one in its window and brings that window forward.
+    static func revealTabScript(for np: NowPlaying) -> String {
+        if np.player.kind == .safari {
+            let (wid, index) = safariTab(np.sourceTabID)
+            return """
+            tell application id "com.apple.Safari"
+                set w to window id \(wid)
+                set current tab of w to tab \(index) of w
+                set index of w to 1
+            end tell
+            """
+        }
+        return """
+        tell application id "\(np.player.bundleID)"
+            repeat with w in windows
+                set i to 0
+                repeat with t in tabs of w
+                    set i to i + 1
+                    try
+                        if ((id of t) as text) is "\(np.sourceTabID)" then
+                            set active tab index of w to i
+                            set index of w to 1
+                            return
                         end if
                     end try
                 end repeat
-                if theResult is not "" then exit repeat
             end repeat
-            return theResult
         end tell
         """
+    }
+
+    /// Safari tabs have no id, so a stream is keyed "windowID:tabIndex".
+    private static func safariTab(_ key: String) -> (Int, Int) {
+        let parts = key.split(separator: ":").map { Int($0) ?? 1 }
+        return (parts.first ?? 1, parts.count > 1 ? parts[1] : 1)
     }
 
     /// Each app script answers eight linefeed-separated fields:
     /// state, title, artist, album, position (s), duration (s; Spotify: ms), track id, artwork hint.
     private static func statusScript(for player: NowPlaying.Player) -> String {
-        switch player {
+        switch player.kind {
         case .music:
             return """
             tell application "Music"

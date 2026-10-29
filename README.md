@@ -102,7 +102,8 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 ### Live activities
 | Feature | | Notes |
 |---|---|---|
-| Now Playing: art, title/artist, progress, play/pause/skip, scrubbing | ✅ | Music, Spotify, VLC via AppleScript; Chrome/Brave/Edge via page JavaScript (one-time browser switch, see Permissions) |
+| Now Playing: art, title/artist, progress, play/pause/skip, scrubbing | ✅ | Music, Spotify, VLC via AppleScript; Safari and every Chromium browser (Chrome, Brave, Edge, Arc, Vivaldi, Opera, Chromium, beta/dev/canary channels) via page JavaScript (one-time browser switch, see Permissions) |
+| Multiple sources: every player and every browser tab with media is a stream | ✅ | The island follows the stream that started most recently (audible before muted), stays put while nothing plays, and lists the others as chips in the media card; tap one to switch, click the artwork to jump to its tab |
 | Volume HUD | ◐ | Island shows a volume HUD on change (1 s poll). The stock macOS overlay is **not** suppressed |
 | Brightness HUD | ✗ | Needs private CoreDisplay APIs |
 | Battery: charger plug/unplug activity, low-battery (20/10/5 %) warnings | ✅ | IOKit power-source notifications |
@@ -160,7 +161,8 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 - **Hover** → clock and date, Mic/Camera/Focus/Awake chips, battery, a bell with the unread count,
   then the running timer, next event, Now Playing and the last notification.
 - **Click** → the shade: clock header, quick toggles (Dark Mode, Keep Awake, Wi-Fi, Mirror, Focus),
-  Timer, next event with Join, Now Playing with scrubber and system volume, Shelf, Clipboard, then
+  Timer, next event with Join, Now Playing with scrubber, system volume and source chips when
+  several streams are live, Shelf, Clipboard, then
   notifications grouped by app with Clear / Clear All. Grabber, Esc or clicking elsewhere closes it.
 - **Drag files onto the notch** → they land on the Shelf; drag them out again or AirDrop them.
 - **⌥ Space** (configurable) → launcher. Try `12*3+4^2`, `5 km to mi`, `timer 25`, `lock`, `dark`.
@@ -172,7 +174,7 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 |---|---|
 | Hotkey swallow; browser ⏮ ⏭ (media keys) | **Accessibility** for the binary (`.build/debug/NotchIsland` from `swift run`) |
 | Now Playing, volume, dark mode | **Automation** → each player/browser and System Events (asked on first use) |
-| Browser Now Playing | Chrome/Brave/Edge: **View ▸ Developer ▸ Allow JavaScript from Apple Events**, once |
+| Browser Now Playing | Chromium browsers (Chrome, Brave, Edge, Arc, Vivaldi, Opera…): **View ▸ Developer ▸ Allow JavaScript from Apple Events**, once per browser. Safari: Settings ▸ Advanced ▸ *Show features for web developers*, then **Develop ▸ Developer Settings ▸ Allow JavaScript from Apple Events**. Firefox has no scripting bridge |
 | Notifications | **Full Disk Access**: Notification Center's store under `~/Library/Group Containers/group.com.apple.usernoted/` is protected by macOS. The island and Settings ▸ Permissions show a hint until it is granted; relaunch afterwards |
 | Calendar | Asked when you press **Allow** in the shade |
 | Camera mirror | Asked when you first open the mirror |
@@ -192,7 +194,7 @@ Settings ▸ Permissions shows the current status with shortcuts to the right Sy
 | `ShadeView.swift` | Shade: quick toggles, timer, calendar, media, shelf, clipboard, notifications |
 | `LiveActivity.swift` | `ActivityCenter` (HUD + long-running "sticky" activities) and the HUD view |
 | `Monitors.swift` | Battery, mic/camera/Focus, Bluetooth, Downloads, Clipboard, custom-activity file, visibility |
-| `MediaController.swift` | Music/Spotify/VLC + Chromium browsers, transport, seek, artwork, system volume |
+| `MediaController.swift` | Music/Spotify/VLC, Safari and Chromium browsers; every stream as a source, active-stream selection, transport, seek, artwork, system volume |
 | `MediaViews.swift` | Ears, level meter, media cards, volume slider |
 | `NotificationWatcher.swift` | Reads Notification Center's SQLite store (history + WAL watcher) |
 | `TimerModule.swift`, `CalendarModule.swift`, `Shelf.swift`, `CameraMirror.swift` | Those modules |
@@ -205,6 +207,7 @@ Settings ▸ Permissions shows the current status with shortcuts to the right Sy
 - `NOTCHISLAND_PREVIEW=shade|expanded|launcher|banner|activity|settings swift run` opens that state on
   launch; with `settings`, `NOTCHISLAND_SETTINGS_TAB=general|modules|visibility|permissions` picks the tab.
 - `NOTCHISLAND_DEMO=1` swaps the live media, notification and clipboard sources for sample content
+- `NOTCHISLAND_MEDIA_LOG=1` logs every media poll's streams and the one the island picked (stderr)
   (no personal data), which is how the screenshots in `docs/assets` are made; `NOTCHISLAND_QUERY`
   pre-fills the launcher.
 - `NOTCHISLAND_DEBUG=1` logs shade toggles and key-window loss.

@@ -33,7 +33,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Rufaro Edward Mutepfa · MIT License</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>NotchIsland talks to Music, Spotify, VLC and your browser to show and control what is playing.</string>
+	<string>NotchIsland talks to Music, Spotify, VLC, Safari and Chromium browsers to show and control what is playing.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>NotchIsland shows your next event and its meeting link in the island.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

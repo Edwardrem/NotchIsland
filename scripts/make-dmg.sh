@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Builds NotchIsland.app (release, Apple silicon) and wraps it in dist/NotchIsland.dmg.
-# Usage: scripts/make-dmg.sh [version]   e.g. scripts/make-dmg.sh 1.0.1
+# Usage: scripts/make-dmg.sh [version]   e.g. scripts/make-dmg.sh 1.1.0
 #
 # Signing, best available first:
 #   1. A "Developer ID Application" identity in the login keychain (paid Apple Developer Program):
@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${1:-1.0.1}"
+VERSION="${1:-1.1.0}"
 BUILD="$(date +%Y%m%d%H%M)"
 APP="dist/NotchIsland.app"
 ROOT="dist/dmg-root"

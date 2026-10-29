@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.1.0 · 2026-10-29
+
+### Fixed
+- The island stuck on one browser while another one played. The browser status script stopped at
+  the first tab with any media element, even a paused preview (YouTube's home page keeps one), so
+  a tab playing further along the tab strip was never seen and the island stayed on whatever it
+  had shown before. Every tab is now read and every stream is reported.
+
+### Added
+- Multiple sources. Every player and every browser tab with media is a stream. The island follows
+  the one that started playing most recently (audible before muted), stays on the current one
+  while nothing plays, and lists the others as chips in the media card. Tap a chip to switch; the
+  choice holds until a new stream starts. Clicking the artwork of a browser stream jumps to its tab.
+- Safari, and every Chromium browser next to Chrome, Brave and Edge: Arc, Vivaldi, Opera, Opera GX,
+  Chromium and the beta/dev/canary channels. Safari needs Develop ▸ Developer Settings ▸ Allow
+  JavaScript from Apple Events (turn on *Show features for web developers* in Settings ▸ Advanced
+  first). Firefox has no scripting bridge.
+- `NOTCHISLAND_MEDIA_LOG=1` logs every poll's streams and the chosen one.
+
+### Changed
+- Media that never played (hover previews, blocked autoplay) and muted looping decorations
+  (landing-page hero videos) are ignored. Each tab gets at most 3 s, so a hung page can no longer
+  freeze the island for a minute. A stream that one poll missed is held for a couple of seconds
+  before the island moves on, so a tab closing elsewhere does not flip the card back and forth.
+
 ## 1.0.1 · 2026-10-29
 
 ### Fixed

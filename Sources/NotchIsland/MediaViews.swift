@@ -44,37 +44,132 @@ struct LevelMeter: View {
     }
 }
 
+/// One chip per stream the controller can see (app icon, short name, bars while it plays); tap one
+/// to switch the island to it. Chips keep their natural width and wrap onto more rows, so no label
+/// is ever clipped.
+struct SourcePicker: View {
+    let sources: [NowPlaying]
+    let current: NowPlaying
+    let select: (NowPlaying) -> Void
+
+    var body: some View {
+        FlowLayout(spacing: 6) {
+            ForEach(sources, id: \.sourceKey) { source in
+                let selected = source.sourceKey == current.sourceKey
+                Button { select(source) } label: {
+                    HStack(spacing: 5) {
+                        Image(nsImage: source.icon).resizable().frame(width: 14, height: 14)
+                        Text(Self.caption(for: source, among: sources))
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .lineLimit(1)
+                            .fixedSize()
+                        if source.isPlaying {
+                            Image(systemName: "waveform").font(.system(size: 9, weight: .bold))
+                        }
+                    }
+                    .foregroundStyle(selected ? Theme.onAccent : .white)
+                    .padding(.horizontal, 9)
+                    .frame(height: 24)
+                    .background(selected ? Theme.accent : UI.controlFill, in: Capsule())
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help(source.title.isEmpty ? source.player.name : "\(source.player.name) · \(source.title)")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The app's short name. When the same app has several streams, the site tells them apart
+    /// ("Brave · youtube.com"), or the start of the title when the sites match too.
+    static func caption(for source: NowPlaying, among all: [NowPlaying]) -> String {
+        let twins = all.filter { $0.player == source.player }
+        guard twins.count > 1 else { return source.player.label }
+        let hosts = Set(twins.map(\.sourceHost))
+        if hosts.count == twins.count, !source.sourceHost.isEmpty {
+            return "\(source.player.label) · \(source.sourceHost)"
+        }
+        guard !source.title.isEmpty else { return source.player.label }
+        let short = source.title.count > 18
+            ? String(source.title.prefix(17)).trimmingCharacters(in: .whitespaces) + "…"
+            : source.title
+        return "\(source.player.label) · \(short)"
+    }
+}
+
+/// Lays children out left to right and starts a new row when the width runs out.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0, widest: CGFloat = 0
+        for sub in subviews {
+            let size = sub.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                x = 0
+                y += row + spacing
+                row = 0
+            }
+            x += size.width + spacing
+            row = max(row, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return CGSize(width: width.isFinite ? width : widest, height: y + row)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
+        for sub in subviews {
+            let size = sub.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += row + spacing
+                row = 0
+            }
+            sub.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += size.width + spacing
+            row = max(row, size.height)
+        }
+    }
+}
+
 /// Now Playing row for the hover readout: artwork, title/artist, scrubber, transport.
 struct MediaCard: View {
     let media: NowPlaying
-    let controller: MediaController
+    @ObservedObject var controller: MediaController
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button(action: controller.openPlayer) {
-                ArtworkView(image: media.artwork, size: 48, radius: 11)
-            }
-            .buttonStyle(.plain)
-            .help("Open \(media.player.name)")
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(media.title.isEmpty ? media.player.name : media.title)
-                    .font(UI.title())
-                    .lineLimit(1)
-                Text(media.subtitle.isEmpty ? media.player.name : media.subtitle)
-                    .font(UI.body(11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                ProgressStrip(media: media, onSeek: controller.seek)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 2) {
-                TransportButton(symbol: "backward.fill", glyph: 13, size: 28) { controller.previous() }
-                TransportButton(symbol: media.isPlaying ? "pause.fill" : "play.fill", glyph: 18, size: 32) {
-                    controller.togglePlayPause()
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                Button(action: controller.openPlayer) {
+                    ArtworkView(image: media.artwork, size: 48, radius: 11)
                 }
-                TransportButton(symbol: "forward.fill", glyph: 13, size: 28) { controller.next() }
+                .buttonStyle(.plain)
+                .help("Open \(media.player.name)")
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(media.title.isEmpty ? media.player.name : media.title)
+                        .font(UI.title())
+                        .lineLimit(1)
+                    Text(media.subtitle.isEmpty ? media.player.name : media.subtitle)
+                        .font(UI.body(11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    ProgressStrip(media: media, onSeek: controller.seek)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 2) {
+                    TransportButton(symbol: "backward.fill", glyph: 13, size: 28) { controller.previous() }
+                    TransportButton(symbol: media.isPlaying ? "pause.fill" : "play.fill", glyph: 18, size: 32) {
+                        controller.togglePlayPause()
+                    }
+                    TransportButton(symbol: "forward.fill", glyph: 13, size: 28) { controller.next() }
+                }
+            }
+            if controller.sources.count > 1 {
+                SourcePicker(sources: controller.sources, current: media, select: controller.select)
             }
         }
         .islandCard(padding: 12)
@@ -172,6 +267,10 @@ struct ShadeMediaCard: View {
                     .padding(.top, 2)
                 }
                 Spacer(minLength: 0)
+            }
+
+            if controller.sources.count > 1 {
+                SourcePicker(sources: controller.sources, current: media, select: controller.select)
             }
 
             ProgressStrip(media: media, onSeek: controller.seek)
