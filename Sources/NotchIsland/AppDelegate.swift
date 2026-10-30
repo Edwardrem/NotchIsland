@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let visibility = VisibilityMonitor()
     private var globalMonitor: Any?
     private var localMonitor: Any?
+    private var accessibilityPoll: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = NotchIslandInfoPlistMarker()   // keeps the embedded Info.plist linked in
@@ -27,9 +28,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Hotkey: CGEvent tap (swallows the key) when Accessibility allows, NSEvent monitors otherwise.
         hotkey.onTrigger = { [weak self] in self?.state.toggleLauncher() }
         installHotkey()
+        state.setAccessibilityGranted(AXIsProcessTrusted())
         NotificationCenter.default.addObserver(forName: .notchHotkeyChanged, object: nil, queue: .main) { [weak self] _ in
             self?.installHotkey()
         }
+        // A grant made (or lost) while running must be picked up without a relaunch: macOS announces
+        // changes to the Accessibility list, and a slow poll covers the cases it does not.
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.accessibility.api"), object: nil, queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self?.rearmHotkeyIfNeeded() }
+        }
+        accessibilityPoll = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            self?.rearmHotkeyIfNeeded()
+        }
+        Permissions.calendarRequest = { [weak self] in self?.state.calendar.requestAccess() }
 
         // Hide over full-screen / listed apps.
         visibility.onChange = { [weak self] visible in self?.panel.setHiddenByPolicy(!visible) }
@@ -53,6 +66,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // NOTCHISLAND_QUERY pre-fills the launcher.
         let env = ProcessInfo.processInfo.environment
         let demo = env["NOTCHISLAND_DEMO"] == "1"
+        if !demo, env["NOTCHISLAND_PREVIEW"] == nil {
+            // After an update, grants that belong to the previous build are cleared so System
+            // Settings stops showing switches that do nothing, and Accessibility is asked for again.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { Permissions.repairAfterLaunchIfNeeded() }
+        }
         if demo {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.state.seedDemo() }
         }
@@ -80,6 +98,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    /// The CGEvent tap needs Accessibility. Re-run the install when the grant appears (tap replaces
+    /// the observe-only monitors) or disappears (macOS disables the tap; fall back to monitors).
+    private func rearmHotkeyIfNeeded() {
+        let trusted = AXIsProcessTrusted()
+        if hotkey.isActive != trusted { installHotkey() }
+        state.setAccessibilityGranted(trusted)
     }
 
     private func installHotkey() {

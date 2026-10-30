@@ -35,8 +35,10 @@ search and quick actions. Free, open source (MIT), macOS 13+, Apple silicon.
 3. For notifications, give NotchIsland **Full Disk Access**: System Settings ▸ Privacy & Security ▸
    Full Disk Access ▸ turn on **NotchIsland** (click **+** and pick it from Applications if it is not
    listed), then relaunch. Until then the island shows a hint; click it to jump to that pane.
-4. Everything else is asked for when you first use it (see [Permissions](#permissions)).
-   Settings ▸ Permissions shows the state of each.
+4. Accessibility (hotkey) is asked for on first launch; everything else when you first use it (see
+   [Permissions](#permissions)). Settings ▸ Permissions shows the state of each.
+5. Updating from an earlier version and a switch that is on in System Settings does not work? See
+   [Allowed in System Settings but not working](#allowed-in-system-settings-but-not-working).
 
 ## Run from source
 
@@ -54,7 +56,7 @@ usage strings), so permission prompts name the app properly even when it is not 
 
 ```bash
 scripts/signing-identity.sh   # once per Mac: creates the "NotchIsland Developer" signing identity
-scripts/make-dmg.sh 1.0.1     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
+scripts/make-dmg.sh 1.1.1     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
 ```
 
 `Resources/Info.plist` is the bundle template, `Resources/AppIcon.icns` the icon (drawn by
@@ -63,8 +65,11 @@ scripts/make-dmg.sh 1.0.1     # release build → dist/NotchIsland.app → dist/
 Releases are signed with a self-signed "NotchIsland Developer" certificate kept in its own keychain
 (`~/Library/Keychains/notchisland-signing.keychain-db`, never committed). macOS ties permission
 grants such as Full Disk Access to the app's signature, and an ad-hoc signature changes with every
-build, so a stable identity is what lets those grants survive updates. Without the keychain,
-`make-dmg.sh` falls back to an ad-hoc signature.
+build, so a stable identity is what lets those grants survive updates. `Resources/release-identity.sha1`
+records the certificate's SHA-1 (the hash macOS stores with every grant); `make-dmg.sh` refuses a
+build signed with any other certificate unless `NEW_IDENTITY=1`, and an ad-hoc build unless
+`ALLOW_ADHOC=1`, because either would make every user grant everything again.
+`scripts/signing-identity.sh --fingerprint` prints the current certificate. Back up the keychain.
 
 ### Notarized builds (no Gatekeeper dialog)
 
@@ -172,7 +177,7 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 
 | Feature | What it needs |
 |---|---|
-| Hotkey swallow; browser ⏮ ⏭ (media keys) | **Accessibility** for the binary (`.build/debug/NotchIsland` from `swift run`) |
+| Hotkey swallow; browser ⏮ ⏭ (media keys) | **Accessibility**: asked on first launch, or with **Allow…** in Settings ▸ Permissions. From `swift run` the grant belongs to the binary's path (`.build/debug/NotchIsland`) and is made again after each build |
 | Now Playing, volume, dark mode | **Automation** → each player/browser and System Events (asked on first use) |
 | Browser Now Playing | Chromium browsers (Chrome, Brave, Edge, Arc, Vivaldi, Opera…): **View ▸ Developer ▸ Allow JavaScript from Apple Events**, once per browser. Safari: Settings ▸ Advanced ▸ *Show features for web developers*, then **Develop ▸ Developer Settings ▸ Allow JavaScript from Apple Events**. Firefox has no scripting bridge |
 | Notifications | **Full Disk Access**: Notification Center's store under `~/Library/Group Containers/group.com.apple.usernoted/` is protected by macOS. The island and Settings ▸ Permissions show a hint until it is granted; relaunch afterwards |
@@ -181,6 +186,22 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 | Bluetooth connect activity | One-time Bluetooth prompt (deferred a few seconds after launch) |
 
 Settings ▸ Permissions shows the current status with shortcuts to the right System Settings panes.
+
+### Allowed in System Settings but not working
+
+macOS ties every grant to the code signature of the build that asked for it. A grant made to an
+earlier build with a different signature (1.0.0 was signed ad hoc, so each build was a new app to
+macOS; a `swift run` binary is keyed by its path) never matches the current one. System Settings
+keeps showing the old entry switched on, and flipping the switch does not update what macOS checks,
+so the app reports the permission as missing on every launch, restart or update.
+
+Since 1.1.1 NotchIsland handles this: on the first launch of a build with a new signature it removes
+its stale entries (`tccutil reset <service> com.notchisland.app`) and asks for Accessibility again.
+If a row in Settings ▸ Permissions still shows the orange *was granted to an earlier build* mark,
+click **Reset…** next to it and allow it again; for Full Disk Access add NotchIsland with **+** from
+Applications after the reset. Entries with a terminal icon are leftovers from a development binary
+and do not count. **Reset All Permissions…** does the same for Automation, Bluetooth and Camera.
+Releases from 1.0.1 on share one certificate, so a grant made to any of them carries over to the next.
 
 ## How it works
 

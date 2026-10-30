@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.1.1 · 2026-10-30
+
+### Fixed
+- Permissions that System Settings showed as allowed did not apply, and every restart or update
+  looked as if it had lost them. macOS ties each grant to the signature of the build that asked for
+  it. A grant made to 1.0.0 (signed ad hoc, so a different app to macOS after every build) or to a
+  `swift run` binary never matches the signed releases, yet System Settings keeps listing it
+  switched on, and flipping the switch does not refresh the stored requirement. NotchIsland now
+  repairs this itself: on the first launch of a build with a different signature it removes its
+  stale entries (`tccutil reset`) and asks for Accessibility again. Settings ▸ Permissions marks a
+  grant that was there before and no longer applies, offers **Allow…** and **Reset…** per row,
+  explains the leftover development entries (the ones with a terminal icon), and has **Reset All
+  Permissions…** for Automation, Bluetooth and Camera.
+- Accessibility granted while the app was running was not used until a relaunch: the hotkey kept
+  its observe-only fallback. The CGEvent tap is now re-armed within three seconds of a change (and
+  dropped again if the grant goes away).
+- The app never asked for Accessibility, it only checked. **Allow…** in Settings and the first
+  launch after an update now show the system dialog.
+
+### Changed
+- `scripts/make-dmg.sh` refuses to sign a release with a certificate other than the one recorded in
+  `Resources/release-identity.sha1` (the hash macOS stores with every grant) unless `NEW_IDENTITY=1`,
+  and refuses an ad-hoc build unless `ALLOW_ADHOC=1`. `scripts/signing-identity.sh --fingerprint`
+  prints the current certificate. Either slip would make every user grant everything again.
+- Settings ▸ Permissions ▸ About names the signing certificate and what it means for grants.
+
 ## 1.1.0 · 2026-10-29
 
 ### Fixed

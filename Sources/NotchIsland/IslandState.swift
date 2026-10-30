@@ -64,6 +64,7 @@ final class IslandState: ObservableObject {
     private var bannerTimer: DispatchWorkItem?
     private var hoverWork: DispatchWorkItem?
     private var notificationProblem: IslandHint?
+    private var accessibilityProblem: IslandHint?
     private var cancellables = Set<AnyCancellable>()
     private var running: Set<String> = []
 
@@ -240,8 +241,18 @@ final class IslandState: ObservableObject {
     }
 
     private func updateHint(mediaProblem: String?) {
-        let combined = mediaProblem.map { IslandHint(text: $0) } ?? notificationProblem
+        let combined = mediaProblem.map { IslandHint(text: $0) } ?? notificationProblem ?? accessibilityProblem
         if combined != hint { hint = combined }
+    }
+
+    /// Without Accessibility the hotkey is not seen while another app is frontmost, so say so.
+    func setAccessibilityGranted(_ granted: Bool) {
+        let problem = granted ? nil : IslandHint(
+            text: "Hotkey: allow NotchIsland under Accessibility. Already on? Settings ▸ Permissions ▸ Reset.",
+            settingsPane: PrivacyPane.accessibility)
+        guard problem != accessibilityProblem else { return }
+        accessibilityProblem = problem
+        updateHint(mediaProblem: mediaController.problem)
     }
 
     // MARK: - Hover

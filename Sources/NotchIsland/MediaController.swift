@@ -115,6 +115,7 @@ final class MediaController: ObservableObject {
     private var denied: Set<NowPlaying.Player> = []        // Automation permission declined
     private var browserJS: [NowPlaying.Player: Bool] = [:] // nil unknown, false off, true on
     private var reportedErrors: Set<Int> = []
+    private var resetObserver: Any?
     private var pendingVolume: Int?
     private var volumeHeldUntil = Date.distantPast
     private var volumeInitialized = false
@@ -145,6 +146,18 @@ final class MediaController: ObservableObject {
             t.setEventHandler { [weak self] in self?.poll() }
             t.resume()
             timer = t
+        }
+        if resetObserver == nil {
+            // After `tccutil reset`, a player that was "declined" may be allowed on the next try.
+            resetObserver = NotificationCenter.default.addObserver(forName: .notchPermissionsReset, object: nil, queue: nil) { [weak self] _ in
+                guard let self else { return }
+                self.queue.async {
+                    self.denied.removeAll()
+                    self.browserJS.removeAll()
+                    self.reportedErrors.removeAll()
+                    DispatchQueue.main.async { self.problem = nil }
+                }
+            }
         }
     }
 

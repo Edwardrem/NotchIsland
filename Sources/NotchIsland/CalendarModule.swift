@@ -36,6 +36,14 @@ final class CalendarModule: ObservableObject {
     private let store = EKEventStore()
     private var timer: Timer?
     private var observer: Any?
+    private var resetObserver: Any?
+
+    init() {
+        // After `tccutil reset` the status goes back to "not determined" and the shade shows Allow again.
+        resetObserver = NotificationCenter.default.addObserver(forName: .notchPermissionsReset, object: nil, queue: .main) { [weak self] _ in
+            self?.status = EKEventStore.authorizationStatus(for: .event)
+        }
+    }
 
     var isAuthorized: Bool {
         if #available(macOS 14, *) { return status == .fullAccess }

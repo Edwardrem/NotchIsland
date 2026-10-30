@@ -198,7 +198,18 @@ enum QuickSystem {
     }
 
     /// Quits and starts the app again. macOS applies a new Full Disk Access grant only to a fresh process.
+    /// When launchd started us (launch at login), the job is restarted in place; starting a second
+    /// copy with `open -n` would leave launchd's job empty and later launches would double up.
     static func relaunch() {
+        if ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"] == LaunchAtLogin.label {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            p.arguments = ["kickstart", "-k", "gui/\(getuid())/\(LaunchAtLogin.label)"]
+            if (try? p.run()) != nil {
+                p.waitUntilExit()
+                if p.terminationStatus == 0 { return }   // launchd is replacing us
+            }
+        }
         let bundle = Bundle.main.bundleURL
         let isBundle = bundle.pathExtension == "app"
         let target = isBundle ? bundle.path : (Bundle.main.executableURL?.path ?? bundle.path)

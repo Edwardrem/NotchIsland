@@ -23,4 +23,10 @@ NotchIsland - first launch
    System Settings > Privacy & Security > Full Disk Access > turn on NotchIsland
    (click + and pick it from Applications if it is not listed), then relaunch.
 
+4. Updating from an earlier version? macOS ties each permission to the build
+   that asked for it. If a switch is on in System Settings but NotchIsland says
+   the permission is missing, open NotchIsland's Settings > Permissions and
+   click Reset next to it, then allow it again. Entries with a terminal icon
+   are leftovers from a development build and do not count.
+
 Source, issues and releases: https://github.com/Edwardrem/NotchIsland

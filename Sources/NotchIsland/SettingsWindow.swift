@@ -33,19 +33,9 @@ struct SettingsView: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var recording = false
     @State private var accent: Color = Theme.accent
-    @State private var perms = PermissionStatus()
+    @State private var perms: [Permission: Permissions.Status] = [:]
+    @State private var permissionNote: String?
     @State private var tab = ProcessInfo.processInfo.environment["NOTCHISLAND_SETTINGS_TAB"] ?? "general"
-
-    /// Snapshot of what macOS currently lets us do; re-read while the window is open so a grant shows up.
-    private struct PermissionStatus {
-        var accessibility = AXIsProcessTrusted()
-        var calendar: Bool = {
-            let s = EKEventStore.authorizationStatus(for: .event)
-            if #available(macOS 14, *) { return s == .fullAccess }
-            return s == .authorized
-        }()
-        var fullDisk = NotificationWatcher.storeAccess().isUsable
-    }
 
     var body: some View {
         TabView(selection: $tab) {
@@ -166,16 +156,37 @@ struct SettingsView: View {
     private var permissions: some View {
         Form {
             Section("Status") {
-                row("Accessibility (hotkey swallow, browser ⏮⏭)", ok: perms.accessibility, pane: PrivacyPane.accessibility)
-                row("Calendar", ok: perms.calendar, pane: PrivacyPane.calendars)
-                row("Full Disk Access (notifications)", ok: perms.fullDisk, pane: PrivacyPane.fullDiskAccess)
-                if !perms.fullDisk {
+                ForEach(Permission.allCases) { permissionRow($0) }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Switched on in System Settings but still red here? macOS ties each grant to the app's signature. An entry made by an earlier build of NotchIsland, or by a development binary (listed with a terminal icon), never matches this build, and flipping its switch changes nothing. Reset removes NotchIsland's entry so macOS asks fresh.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let permissionNote {
+                        Text(permissionNote)
+                            .font(.caption).foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            if !(perms[.fullDiskAccess]?.isGranted ?? false) {
+                Section("Full Disk Access") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Notifications come from Notification Center's own store, which macOS only opens for apps with Full Disk Access. In that list turn on NotchIsland (click + and pick it from Applications if it isn't there), then relaunch.")
+                        Text("Notifications come from Notification Center's own store, which macOS only opens for apps with Full Disk Access. There is no prompt for it: in that list click +, pick NotchIsland from Applications and switch it on, then relaunch. A NotchIsland entry with a terminal icon is a leftover from a development build and does not count.")
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-                        Button("Relaunch NotchIsland") { QuickSystem.relaunch() }
+                        HStack {
+                            Button("Open Full Disk Access") { PrivacyPane.open(PrivacyPane.fullDiskAccess) }
+                            Button("Relaunch NotchIsland") { QuickSystem.relaunch() }
+                        }
                     }
+                }
+            }
+            Section("Automation, Bluetooth, Camera") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Players and browsers (Automation), Bluetooth and the camera are asked for on first use. If one of them stopped responding after an update while System Settings shows it allowed, reset everything: macOS asks again on next use.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Reset All Permissions…") { confirmResetAll() }
                 }
             }
             Section("Browser Now Playing") {
@@ -193,24 +204,96 @@ struct SettingsView: View {
                     .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
             }
             Section("About") {
-                Text("NotchIsland \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev") · bundle id \(Bundle.main.bundleIdentifier ?? "none")")
-                    .font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("NotchIsland \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "source")) · bundle id \(Bundle.main.bundleIdentifier ?? "none")")
+                    Text(Permissions.identitySummary)
+                    if !Permissions.isBundled {
+                        Text("Running from source: macOS keys grants to this binary's path, and they are made again after every build.")
+                    }
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
-        .onAppear { perms = PermissionStatus() }
-        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in perms = PermissionStatus() }
+        .onAppear { refreshPermissions() }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in refreshPermissions() }
+        .onReceive(NotificationCenter.default.publisher(for: .notchPermissionsReset)) { _ in refreshPermissions() }
     }
 
-    private func row(_ title: String, ok: Bool, pane: String) -> some View {
-        HStack {
-            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .foregroundStyle(ok ? .green : .red)
-            Text(title)
-            Spacer()
-            if !ok {
-                Button("Open Settings") { PrivacyPane.open(pane) }
+    private func refreshPermissions() {
+        var next: [Permission: Permissions.Status] = [:]
+        for p in Permission.allCases { next[p] = Permissions.status(p) }
+        if next != perms { perms = next }
+    }
+
+    private func permissionRow(_ p: Permission) -> some View {
+        let s = perms[p] ?? Permissions.Status(grant: .unknown, stale: false)
+        let symbol: String
+        let tint: Color
+        switch (s.grant, s.stale) {
+        case (.granted, _): (symbol, tint) = ("checkmark.circle.fill", .green)
+        case (.denied, true): (symbol, tint) = ("exclamationmark.triangle.fill", .orange)
+        case (.denied, false): (symbol, tint) = ("xmark.circle.fill", .red)
+        case (.notAsked, _): (symbol, tint) = ("questionmark.circle.fill", .secondary)
+        case (.unknown, _): (symbol, tint) = ("minus.circle.fill", .secondary)
+        }
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: symbol).font(.system(size: 15)).foregroundStyle(tint).padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(p.title)
+                Text(p.purpose).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if s.stale {
+                    Text("Was granted to an earlier build. System Settings may still show it on, but macOS no longer applies it: click Reset, then allow it again.")
+                        .font(.caption).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if s.grant == .notAsked {
+                    Text("Not asked yet.").font(.caption).foregroundStyle(.secondary)
+                } else if s.grant == .unknown {
+                    Text("Nothing to test against yet: no notification has been delivered on this Mac.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            Spacer(minLength: 8)
+            if !s.isGranted {
+                HStack(spacing: 6) {
+                    Button(p.hasPrompt ? "Allow…" : "Open Settings") { Permissions.ask(p) }
+                        .help(p.hasPrompt ? "Ask macOS for \(p.title)" : "Open the \(p.title) list in System Settings")
+                    if s.grant == .denied {
+                        Button("Reset…") { repair(p) }
+                            .help("Remove NotchIsland's \(p.title) entry so macOS asks again")
+                    }
+                }
+                .fixedSize()
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func repair(_ p: Permission) {
+        permissionNote = nil
+        Permissions.repair(p) { ok, message in
+            if !ok {
+                permissionNote = "Reset failed\(message.isEmpty ? "" : " (\(message))"). Remove NotchIsland from the \(p.title) list with − and add it again with +."
+            } else if p == .fullDiskAccess {
+                permissionNote = "Entry removed. In the Full Disk Access list click +, pick NotchIsland from Applications, switch it on and relaunch."
+            }
+            refreshPermissions()
+        }
+    }
+
+    private func confirmResetAll() {
+        let alert = NSAlert()
+        alert.messageText = "Reset all of NotchIsland's permissions?"
+        alert.informativeText = "macOS forgets every grant NotchIsland has: Accessibility, Full Disk Access, Calendar, Automation for each player and browser, Bluetooth and Camera. It asks again on next use; Full Disk Access is added again by hand. NotchIsland relaunches afterwards."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reset and Relaunch")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Permissions.reset(nil) { ok, message in
+            if ok { QuickSystem.relaunch() } else { permissionNote = "Reset failed\(message.isEmpty ? "" : " (\(message))")." }
         }
     }
 }
