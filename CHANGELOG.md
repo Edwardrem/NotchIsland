@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.1 · 2026-10-31
+
+### Fixed
+- A stream from the system feed (the TV app, QuickTime Player…) vanished from the island about ten
+  seconds after it was first seen unless playback changed. The adapter's two-second heartbeat never
+  ran: its timer was released as soon as the function that created it returned. The island now
+  keeps such a stream for as long as it plays.
+- The feed process (Apple's perl running the adapter) could outlive NotchIsland when the app was
+  ended without warning, which is how an in-app update relaunches it, and pile up one copy per
+  relaunch. It now quits on its own within two seconds of losing its parent, and as soon as a write
+  to the app fails.
+
 ## 1.3.0 · 2026-10-31
 
 ### Added

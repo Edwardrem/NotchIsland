@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 typedef void (*MRGetInfoFn)(dispatch_queue_t, void (^)(CFDictionaryRef));
 typedef void (*MRGetBoolFn)(dispatch_queue_t, void (^)(Boolean));
@@ -37,6 +38,7 @@ static MRRegisterFn registerNotifications;
 static dispatch_queue_t work;
 static NSString *lastArtworkKey = nil;
 static BOOL fetchScheduled = NO;
+static dispatch_source_t heartbeat;   // global: under ARC a local would be released, and with it the timer
 
 static BOOL load(void) {
     if (mr) return YES;
@@ -126,12 +128,20 @@ static NSDictionary *snapshot(BOOL withArtwork) {
     return out;
 }
 
+/// The reader is NotchIsland. When it is gone (quit, crashed, or replaced by an update through
+/// `launchctl kickstart -k`, which gives no chance to tidy up) this process is reparented to launchd
+/// and must not linger: it would keep MediaRemote busy and pile up once per relaunch.
+static void exitIfOrphaned(void) {
+    if (getppid() == 1) exit(0);
+}
+
 static void writeLine(NSDictionary *object) {
+    exitIfOrphaned();
     NSData *json = [NSJSONSerialization dataWithJSONObject:object options:0 error:nil];
     if (!json) return;
-    fwrite(json.bytes, 1, json.length, stdout);
+    if (fwrite(json.bytes, 1, json.length, stdout) != json.length) exit(0);   // reader gone
     fputc('\n', stdout);
-    fflush(stdout);
+    if (fflush(stdout) != 0) exit(0);
 }
 
 static void emit(void) {
@@ -163,12 +173,12 @@ void notchisland_mra_stream(void *interp, void *cv) {
                                                           usingBlock:^(NSNotification *n) { scheduleEmit(); }];
         }
         emit();
-        dispatch_source_t beat = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-        dispatch_source_set_timer(beat, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), 2 * NSEC_PER_SEC, (uint64_t)(0.2 * NSEC_PER_SEC));
-        dispatch_source_set_event_handler(beat, ^{ emit(); });
-        dispatch_resume(beat);
+        heartbeat = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+        dispatch_source_set_timer(heartbeat, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), 2 * NSEC_PER_SEC, (uint64_t)(0.2 * NSEC_PER_SEC));
+        dispatch_source_set_event_handler(heartbeat, ^{ exitIfOrphaned(); emit(); });
+        dispatch_resume(heartbeat);
     }
-    [[NSRunLoop currentRunLoop] run];
+    dispatch_main();   // services the main queue (notifications, heartbeat); never returns
 }
 
 /// `get`: one line and out.

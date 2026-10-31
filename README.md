@@ -59,7 +59,7 @@ usage strings), so permission prompts name the app properly even when it is not 
 
 ```bash
 scripts/signing-identity.sh   # once per Mac: creates the "NotchIsland Developer" signing identity
-scripts/make-dmg.sh 1.3.0     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
+scripts/make-dmg.sh 1.3.1     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
 ```
 
 `Resources/Info.plist` is the bundle template, `Resources/AppIcon.icns` the icon (drawn by
