@@ -112,7 +112,7 @@ struct SettingsView: View {
     private var modules: some View {
         Form {
             Section("Live activities") {
-                Toggle("Now Playing (Music, Spotify, VLC, Safari and Chromium browsers)", isOn: $settings.mediaEnabled)
+                Toggle("Now Playing (TV, Music, Podcasts, QuickTime, Spotify, VLC, browsers and any other app)", isOn: $settings.mediaEnabled)
                 Toggle("Notifications (banner + shade)", isOn: $settings.notificationsEnabled)
                 Toggle("Volume HUD", isOn: $settings.volumeHUDEnabled)
                 Toggle("Battery: charger and low-battery alerts", isOn: $settings.batteryAlertsEnabled)
@@ -203,7 +203,7 @@ struct SettingsView: View {
                     .font(.caption)
                 Text("Safari: Settings ▸ Advanced ▸ Show features for web developers, then Develop ▸ Developer Settings ▸ Allow JavaScript from Apple Events.")
                     .font(.caption)
-                Text("Every tab with media is a source. The island follows whichever stream started most recently and lists the others as chips in the card; tap one to switch. Firefox has no scripting bridge.")
+                Text("Every tab with media is a source. The island follows whichever stream started most recently and lists the others as chips in the card; tap one to switch. Without the switch (and in Firefox) the browser still shows through the system Now Playing feed, as one stream without tab chips.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Shortcuts integration") {

@@ -18,7 +18,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${1:-1.2.0}"
+VERSION="${1:-1.3.0}"
 BUILD="$(date +%Y%m%d%H%M)"
 APP="dist/NotchIsland.app"
 ROOT="dist/dmg-root"
@@ -28,11 +28,17 @@ echo "▸ swift build -c release"
 swift build -c release 2>&1 | grep -E "error|warning: unre|Compiling|Build complete" || true
 BIN="$(swift build -c release --show-bin-path)/NotchIsland"
 [[ -x "$BIN" ]] || { echo "release binary not found at $BIN"; exit 1; }
+# The MediaRemote adapter (system Now Playing feed) is a dylib loaded by /usr/bin/perl, not by the
+# app; see Sources/MediaRemoteAdapter/adapter.m. SwiftPM builds it as a dynamic library product.
+ADAPTER="$(dirname "$BIN")/libMediaRemoteAdapter.dylib"
+[[ -f "$ADAPTER" ]] || swift build -c release --product MediaRemoteAdapter 2>&1 | grep -E "error" || true
+[[ -f "$ADAPTER" ]] || { echo "adapter not found at $ADAPTER"; exit 1; }
 
 echo "▸ assembling $APP ($VERSION, build $BUILD)"
 rm -rf "$APP" "$ROOT"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN" "$APP/Contents/MacOS/NotchIsland"
+cp "$ADAPTER" "$APP/Contents/Frameworks/libMediaRemoteAdapter.dylib"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist > "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
@@ -44,6 +50,7 @@ EXPECTED_ROOT="$(tr -d '[:space:]' < "$IDENTITY_FILE" 2>/dev/null || true)"
 DEVID="$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"' || true)"
 NOTARIZE=0
 if [[ -n "$DEVID" ]]; then
+  codesign --force --options runtime --timestamp --sign "$DEVID" "$APP/Contents/Frameworks/libMediaRemoteAdapter.dylib"
   codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$DEVID" "$APP"
   echo "  signed with \"$DEVID\" (hardened runtime)"
   if [[ -n "$EXPECTED_ROOT" ]]; then

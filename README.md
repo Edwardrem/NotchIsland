@@ -59,7 +59,7 @@ usage strings), so permission prompts name the app properly even when it is not 
 
 ```bash
 scripts/signing-identity.sh   # once per Mac: creates the "NotchIsland Developer" signing identity
-scripts/make-dmg.sh 1.2.0     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
+scripts/make-dmg.sh 1.3.0     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
 ```
 
 `Resources/Info.plist` is the bundle template, `Resources/AppIcon.icns` the icon (drawn by
@@ -110,7 +110,7 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 ### Live activities
 | Feature | | Notes |
 |---|---|---|
-| Now Playing: art, title/artist, progress, play/pause/skip, scrubbing | ✅ | Music, Spotify, VLC via AppleScript; Safari and every Chromium browser (Chrome, Brave, Edge, Arc, Vivaldi, Opera, Chromium, beta/dev/canary channels) via page JavaScript (one-time browser switch, see Permissions) |
+| Now Playing: art, title/artist, progress, play/pause/skip, scrubbing | ✅ | Any app on the system Now Playing feed (TV, Podcasts, QuickTime Player, IINA, Music…), no permission needed; Music, Spotify, VLC additionally via AppleScript; Safari and every Chromium browser (Chrome, Brave, Edge, Arc, Vivaldi, Opera, Chromium, beta/dev/canary channels) per tab via page JavaScript (one-time browser switch, see Permissions) |
 | Multiple sources: every player and every browser tab with media is a stream | ✅ | The island follows the stream that started most recently (audible before muted), stays put while nothing plays, and lists the others as chips in the media card; tap one to switch, click the artwork to jump to its tab |
 | Volume HUD | ◐ | Island shows a volume HUD on change (1 s poll). The stock macOS overlay is **not** suppressed |
 | Brightness HUD | ✗ | Needs private CoreDisplay APIs |
@@ -155,7 +155,7 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 ### Hard but differentiating
 | Feature | | Notes |
 |---|---|---|
-| Private MediaRemote for Now Playing from any app | ✗ | Returns nothing to third-party processes on current macOS; the known workaround relays through an Apple-signed binary, which this project does not ship |
+| Now Playing from any app (TV, Podcasts, QuickTime Player, IINA…) | ✅ | MediaRemote answers only Apple processes since macOS 15.4, so the feed is read through Apple's own `/usr/bin/perl`, which loads a small adapter dylib shipped in the bundle (`Sources/MediaRemoteAdapter`) and streams JSON lines; transport goes the same way |
 | Replacing the system volume HUD | ✗ | Requires suppressing the OSD process |
 | Per-app notification capture via the Notification Center database | ✅ | |
 | Shortcuts.app integration (custom live activities) | ✅ | Write JSON to `~/Library/Application Support/NotchIsland/activity.json` from a "Run Shell Script" action |
@@ -186,8 +186,8 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 | Feature | What it needs |
 |---|---|
 | Hotkey swallow; browser ⏮ ⏭ (media keys) | **Accessibility**: asked on first launch, or with **Allow…** in Settings ▸ Permissions. From `swift run` the grant belongs to the binary's path (`.build/debug/NotchIsland`) and is made again after each build |
-| Now Playing, volume, dark mode | **Automation** → each player/browser and System Events (asked on first use) |
-| Browser Now Playing | Chromium browsers (Chrome, Brave, Edge, Arc, Vivaldi, Opera…): **View ▸ Developer ▸ Allow JavaScript from Apple Events**, once per browser. Safari: Settings ▸ Advanced ▸ *Show features for web developers*, then **Develop ▸ Developer Settings ▸ Allow JavaScript from Apple Events**. Firefox has no scripting bridge |
+| Now Playing, volume, dark mode | **Automation** → each scripted player/browser and System Events (asked on first use). The system feed (TV, Podcasts, QuickTime Player, any other app) needs no permission |
+| Browser Now Playing | Chromium browsers (Chrome, Brave, Edge, Arc, Vivaldi, Opera…): **View ▸ Developer ▸ Allow JavaScript from Apple Events**, once per browser. Safari: Settings ▸ Advanced ▸ *Show features for web developers*, then **Develop ▸ Developer Settings ▸ Allow JavaScript from Apple Events**. Firefox has no scripting bridge. Without the switch a browser still shows as one stream through the system feed, without tab chips |
 | Notifications | **Full Disk Access**: Notification Center's store under `~/Library/Group Containers/group.com.apple.usernoted/` is protected by macOS. The island and Settings ▸ Permissions show a hint until it is granted; relaunch afterwards |
 | Calendar | Asked when you press **Allow** in the shade |
 | Camera mirror | Asked when you first open the mirror |
@@ -224,6 +224,7 @@ Releases from 1.0.1 on share one certificate, so a grant made to any of them car
 | `LiveActivity.swift` | `ActivityCenter` (HUD + long-running "sticky" activities) and the HUD view |
 | `Monitors.swift` | Battery, mic/camera/Focus, Bluetooth, Downloads, Clipboard, custom-activity file, visibility |
 | `Updater.swift`, `UpdatesSettings.swift` | GitHub Releases check, signature-verified in-place install and relaunch; the Settings ▸ Updates tab with the release notes |
+| `MediaRemoteBridge.swift`, `Sources/MediaRemoteAdapter` | The system Now Playing feed: Apple's perl loads the adapter dylib (MediaRemote answers only Apple processes since macOS 15.4) and streams one JSON line per change; transport commands run the same loader once |
 | `MediaController.swift` | Music/Spotify/VLC, Safari and Chromium browsers; every stream as a source, active-stream selection, transport, seek, artwork, system volume |
 | `MediaViews.swift` | Ears, level meter, media cards, volume slider |
 | `NotificationWatcher.swift` | Reads Notification Center's SQLite store (history + WAL watcher) |

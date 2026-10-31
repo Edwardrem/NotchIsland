@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.0 · 2026-10-31
+
+### Added
+- Now Playing from any app. The TV app, Podcasts, QuickTime Player, IINA, a browser whose
+  JavaScript switch is off, Music without an Automation grant: anything that publishes to Control
+  Center now shows in the island with artwork, progress, play/pause, next/previous and seek, and
+  joins the source chips next to the scripted streams. macOS stopped handing that feed
+  (MediaRemote) to third-party apps in 15.4, so NotchIsland reads it the way the system still
+  allows: through Apple's own `/usr/bin/perl`, which loads a small adapter library shipped in the
+  bundle (`Sources/MediaRemoteAdapter`, built by SwiftPM as a dylib) and streams one JSON line per
+  change. The scripted sources (Music, Spotify, VLC, browser tabs) keep their richer control and
+  per-tab chips; the feed fills in everything else and stands in when a scripted app cannot be
+  reached. No permission is needed for it.
+
+### Changed
+- Settings ▸ Modules names the feed; the browser note says a browser without the JavaScript switch
+  still shows as one stream.
+
 ## 1.2.0 · 2026-10-31
 
 ### Added

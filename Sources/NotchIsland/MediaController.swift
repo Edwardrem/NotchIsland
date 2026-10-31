@@ -7,7 +7,7 @@ import CoreGraphics
 struct NowPlaying: Equatable {
     /// An app NotchIsland can read: a scriptable desktop player, a Chromium browser or Safari.
     struct Player: Hashable {
-        enum Kind: Hashable { case music, spotify, vlc, chromium, safari }
+        enum Kind: Hashable { case music, spotify, vlc, chromium, safari, system }
 
         let bundleID: String
         let kind: Kind
@@ -15,6 +15,18 @@ struct NowPlaying: Equatable {
         let label: String     // "Chrome": for chips and hints
 
         var isBrowser: Bool { kind == .chromium || kind == .safari }
+        /// Read from the system Now Playing feed rather than scripted: TV, Podcasts, QuickTime Player…
+        var isSystem: Bool { kind == .system }
+
+        /// Any app the system feed names; the display name comes from the running process.
+        static func system(bundleID: String, pid: Int32) -> Player {
+            var name = NSRunningApplication(processIdentifier: pid)?.localizedName
+            if name == nil, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+                name = url.deletingPathExtension().lastPathComponent
+            }
+            let display = name ?? String(bundleID.split(separator: ".").last ?? Substring(bundleID))
+            return Player(bundleID: bundleID, kind: .system, name: display, label: display)
+        }
 
         /// Where the browser keeps its "Allow JavaScript from Apple Events" switch.
         var javaScriptSwitch: String { kind == .safari ? "Develop ▸ Developer Settings" : "View ▸ Developer" }
@@ -92,8 +104,9 @@ struct NowPlaying: Equatable {
 /// Scriptable desktop players (Music, Spotify, VLC) are read directly over AppleScript. Browsers
 /// are read by running a little JavaScript in every tab, which the user must allow once (Chromium:
 /// View ▸ Developer ▸ Allow JavaScript from Apple Events; Safari: Develop ▸ Developer Settings);
-/// until then the island shows a hint. Apple's system-wide MediaRemote feed is not available to
-/// third-party processes on current macOS, so this covers the players we can actually reach.
+/// until then the island shows a hint. Everything else (TV, Podcasts, QuickTime Player, any app
+/// that publishes to Control Center) comes from the system Now Playing feed through
+/// `MediaRemoteBridge`, which also stands in for a scripted app that cannot be reached.
 ///
 /// Every stream found is published in `sources`. The island follows the *active* one: whichever
 /// stream started playing most recently, audible before muted; when nothing plays it stays on the
@@ -129,6 +142,8 @@ final class MediaController: ObservableObject {
     private var lastList: [NowPlaying] = []
     private var lastLog = ""
     private let logging = ProcessInfo.processInfo.environment["NOTCHISLAND_MEDIA_LOG"] != nil
+    private let bridge = MediaRemoteBridge.shared
+    private var systemPlayers: [String: NowPlaying.Player] = [:]   // bundle id → player, by name lookup once
     /// Fired (main thread) when the system volume changes from outside the island, e.g. the volume keys.
     var onVolumeChanged: ((Double) -> Void)?
 
@@ -147,6 +162,7 @@ final class MediaController: ObservableObject {
             t.resume()
             timer = t
         }
+        bridge.start()
         if resetObserver == nil {
             // After `tccutil reset`, a player that was "declined" may be allowed on the next try.
             resetObserver = NotificationCenter.default.addObserver(forName: .notchPermissionsReset, object: nil, queue: nil) { [weak self] _ in
@@ -165,6 +181,7 @@ final class MediaController: ObservableObject {
         queue.async { [self] in
             timer?.cancel()
             timer = nil
+            bridge.stop()
             DispatchQueue.main.async {
                 self.nowPlaying = nil
                 self.sources = []
@@ -193,7 +210,9 @@ final class MediaController: ObservableObject {
         np.sampledAt = Date()
         np.isPlaying.toggle()
         nowPlaying = np                                    // optimistic; the next poll confirms
-        if np.player.isBrowser {
+        if np.player.isSystem {
+            sendSystem("toggle")
+        } else if np.player.isBrowser {
             runBrowserCommand(np, js: Self.toggleJS)
         } else {
             send(np.player == .vlc ? "play" : "playpause", to: np.player)
@@ -202,13 +221,15 @@ final class MediaController: ObservableObject {
 
     func next() {
         guard let np = nowPlaying else { return }
-        if np.player.isBrowser { SystemMediaKey.post(SystemMediaKey.next) }
+        if np.player.isSystem { sendSystem("next") }
+        else if np.player.isBrowser { SystemMediaKey.post(SystemMediaKey.next) }
         else { send(np.player == .vlc ? "next" : "next track", to: np.player) }
     }
 
     func previous() {
         guard let np = nowPlaying else { return }
-        if np.player.isBrowser { SystemMediaKey.post(SystemMediaKey.previous) }
+        if np.player.isSystem { sendSystem("previous") }
+        else if np.player.isBrowser { SystemMediaKey.post(SystemMediaKey.previous) }
         else { send(np.player == .vlc ? "previous" : "previous track", to: np.player) }
     }
 
@@ -218,7 +239,9 @@ final class MediaController: ObservableObject {
         np.sampledAt = Date()
         nowPlaying = np
         let value = Int(seconds)
-        if np.player.isBrowser {
+        if np.player.isSystem {
+            sendSystem("seek:\(value)")
+        } else if np.player.isBrowser {
             runBrowserCommand(np, js: "(function(){var e=[].slice.call(document.querySelectorAll('video,audio'));var m=e.filter(function(x){return !x.paused;})[0]||e.filter(function(x){return x.readyState>2;})[0];if(m){m.currentTime=\(value);}})()")
         } else {
             send(np.player == .vlc ? "set current time to \(value)" : "set player position to \(value)",
@@ -236,6 +259,12 @@ final class MediaController: ObservableObject {
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.openApplication(at: url, configuration: config)
+    }
+
+    /// Transport for a system-feed stream goes through MediaRemote (play, pause, next, seek).
+    private func sendSystem(_ command: String) {
+        bridge.send(command)
+        queue.asyncAfter(deadline: .now() + 0.5) { self.poll() }
     }
 
     private func send(_ verb: String, to player: NowPlaying.Player, cache: Bool = true) {
@@ -267,6 +296,12 @@ final class MediaController: ObservableObject {
             } else if let np = query(player) {
                 found.append(np)
             }
+        }
+        // Whatever else the system feed names (TV, Podcasts, QuickTime Player, a browser whose
+        // JavaScript switch is off, Music without Automation…), unless that app was read the
+        // richer way above.
+        if let np = systemStream(), !found.contains(where: { $0.player.bundleID == np.player.bundleID }) {
+            found.append(np)
         }
 
         var (pick, list) = choose(from: found)
@@ -351,6 +386,29 @@ final class MediaController: ObservableObject {
         }
     }
 
+    // MARK: - System feed
+
+    /// The item on the system Now Playing feed as one stream, or nil when there is none.
+    private func systemStream() -> NowPlaying? {
+        guard let s = bridge.snapshot, !(s.title.isEmpty && s.artist.isEmpty) else { return nil }
+        guard let bundleID = s.bundleID ?? NSRunningApplication(processIdentifier: s.pid)?.bundleIdentifier,
+              bundleID != Bundle.main.bundleIdentifier else { return nil }
+        let player: NowPlaying.Player
+        if let known = systemPlayers[bundleID] {
+            player = known
+        } else {
+            player = NowPlaying.Player.known.first { $0.bundleID == bundleID }
+                .map { NowPlaying.Player(bundleID: $0.bundleID, kind: .system, name: $0.name, label: $0.label) }
+                ?? .system(bundleID: bundleID, pid: s.pid)
+            systemPlayers[bundleID] = player
+        }
+        return NowPlaying(player: player, title: s.title.isEmpty ? player.name : s.title, artist: s.artist,
+                          album: s.album, isPlaying: s.isPlaying, elapsed: s.elapsed, duration: s.duration,
+                          trackID: s.itemID.isEmpty ? s.title : s.itemID,
+                          artworkHint: s.artworkKey.isEmpty ? "" : "mr:" + s.artworkKey,
+                          artwork: nil, sampledAt: s.receivedAt)
+    }
+
     // MARK: - App players
 
     private func query(_ player: NowPlaying.Player) -> NowPlaying? {
@@ -430,6 +488,11 @@ final class MediaController: ObservableObject {
     // MARK: - Artwork
 
     private func artwork(for np: NowPlaying) -> NSImage? {
+        if np.player.isSystem {
+            // The feed carries the image itself (sent once per key); the app's icon stands in until then.
+            let key = np.artworkHint.hasPrefix("mr:") ? String(np.artworkHint.dropFirst(3)) : ""
+            return (key.isEmpty ? nil : bridge.artwork(forKey: key)) ?? np.icon
+        }
         // A track whose duration is still unknown has not finished loading (streaming), and Music
         // may still report the previous cover for it; keying on that re-fetches once it loads.
         let key = "\(np.player.bundleID)|\(np.trackID)|\(np.duration > 0)"
