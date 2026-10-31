@@ -243,14 +243,14 @@
       <div class="cta rise d3">
         <a class="btn primary" href="https://github.com/Edwardrem/NotchIsland/raw/main/dist/NotchIsland.dmg" download>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-          Download for Mac <small>.dmg · v1.1.1 · 3.0 MB</small>
+          Download for Mac <small>.dmg · v1.2.0 · 2.0 MB</small>
         </a>
         <a class="btn ghost" href="https://github.com/Edwardrem/NotchIsland">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5A11.5 11.5 0 0 0 .5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.1c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5z"/></svg>
           View on GitHub
         </a>
       </div>
-      <p class="fineprint rise d3">MIT licensed · no accounts, no network, no analytics · <a href="https://github.com/Edwardrem/NotchIsland/releases">all releases</a></p>
+      <p class="fineprint rise d3">MIT licensed · no accounts, no analytics · updates itself from <a href="https://github.com/Edwardrem/NotchIsland/releases">GitHub Releases</a></p>
 
       <div class="display rise d4" aria-label="The NotchIsland shade open under the notch">
         <div class="island"><img src="assets/shade.png" alt="The shade: clock, quick toggles, a running timer, the next calendar event with a Join button, Now Playing with transport and volume, a shelf of files, clipboard history and notifications grouped by app"></div>
@@ -307,7 +307,7 @@
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div>
           <h3>Private by design</h3>
-          <p>No account, no server, no analytics, no network calls. Everything is read from your own Mac, and the full source is right there on GitHub.</p>
+          <p>No account, no server, no analytics. Everything is read from your own Mac. The one network request is a daily look at GitHub Releases for a new version, which sends nothing about you and can be switched off.</p>
         </div>
       </div>
     </div>
@@ -361,6 +361,10 @@
           <h3>Grant what you use</h3>
           <p>Full Disk Access for notifications: System Settings → Privacy &amp; Security → Full Disk Access → turn on NotchIsland (click + and pick it from Applications if it is not listed), then relaunch. The island shows a hint until then; click it to jump there. Accessibility for the hotkey is asked on first launch, Automation the first time a player is read, Calendar and Camera when you first use them. Settings → Permissions shows the state of each.</p>
         </div>
+        <div class="step">
+          <h3>Stay current</h3>
+          <p>That is the last download. NotchIsland checks GitHub once a day and tells you in the island when a new version is out. Settings → Updates shows what's new, and <b>Update Now</b> installs it in place: it keeps every permission you granted and never shows the Gatekeeper dialog, since nothing goes through a browser.</p>
+        </div>
       </div>
       <div class="note"><b>Why the extra click?</b> Only apps notarized through a paid Apple Developer ID open silently. NotchIsland is free and open source and signed with its own certificate, so Gatekeeper asks you to confirm the first launch, once. The DMG includes a "Read me first" with the same steps. You can also build it yourself in under a minute: see below.</div>
       <div class="note"><b>Allowed in System Settings but not working?</b> macOS ties each permission to the build that asked for it. A grant made to an earlier version with a different signature stays switched on in the list but no longer applies, and flipping it changes nothing. Since 1.1.1 NotchIsland clears such entries on its first launch after an update and asks again; if a row in Settings → Permissions still carries the orange <i>was granted to an earlier build</i> mark, click <b>Reset…</b> next to it and allow it again. Entries with a terminal icon are leftovers from a development build.</div>
@@ -383,7 +387,7 @@ cd NotchIsland
 swift run
 
 <span class="c"># or build the .app and .dmg yourself</span>
-scripts/make-dmg.sh 1.1.1</pre>
+scripts/make-dmg.sh 1.2.0</pre>
     </div>
   </section>
 

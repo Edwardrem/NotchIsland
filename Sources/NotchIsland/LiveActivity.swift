@@ -4,7 +4,7 @@ import SwiftUI
 /// A transient "live activity" shown in the island: volume HUD, charger plugged in, download
 /// progress, AirPods connected, timer done, a custom one pushed from Shortcuts, etc.
 struct LiveActivity: Identifiable, Equatable {
-    enum Kind: Equatable { case volume, battery, download, bluetooth, timer, calendar, focus, custom }
+    enum Kind: Equatable { case volume, battery, download, bluetooth, timer, calendar, focus, custom, update }
 
     let id: String
     var kind: Kind

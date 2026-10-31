@@ -6,6 +6,7 @@ import SwiftUI
 struct ShadeContent: View {
     @ObservedObject var state: IslandState
     @ObservedObject var settings = AppSettings.shared
+    @ObservedObject var updater = Updater.shared
     @ObservedObject var shelf: ShelfStore
     @ObservedObject var clipboard: ClipboardHistory
     @ObservedObject var calendar: CalendarModule
@@ -84,6 +85,12 @@ struct ShadeContent: View {
                 state.openLauncherFromShade()
             }
             IconButton(symbol: "gearshape.fill", help: "Settings") { SettingsWindowController.shared.show() }
+            if let release = updater.available {
+                PillButton(title: "Update", symbol: "arrow.down.circle.fill", prominent: true,
+                           help: "NotchIsland \(release.version) is available: see what's new and update") {
+                    SettingsWindowController.shared.show(tab: "updates")
+                }
+            }
             if state.hasNotifications {
                 PillButton(title: "Clear All") { state.clearAll() }
             }

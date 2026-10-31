@@ -37,7 +37,10 @@ search and quick actions. Free, open source (MIT), macOS 13+, Apple silicon.
    listed), then relaunch. Until then the island shows a hint; click it to jump to that pane.
 4. Accessibility (hotkey) is asked for on first launch; everything else when you first use it (see
    [Permissions](#permissions)). Settings ▸ Permissions shows the state of each.
-5. Updating from an earlier version and a switch that is on in System Settings does not work? See
+5. From here on NotchIsland updates itself: it checks GitHub once a day and says so in the island
+   when a new version is out. Settings ▸ Updates shows what's new, and **Update Now** installs it
+   in place, keeping every grant and skipping the Gatekeeper dialog (nothing goes through a browser).
+6. Updating from an earlier version and a switch that is on in System Settings does not work? See
    [Allowed in System Settings but not working](#allowed-in-system-settings-but-not-working).
 
 ## Run from source
@@ -56,7 +59,7 @@ usage strings), so permission prompts name the app properly even when it is not 
 
 ```bash
 scripts/signing-identity.sh   # once per Mac: creates the "NotchIsland Developer" signing identity
-scripts/make-dmg.sh 1.1.1     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
+scripts/make-dmg.sh 1.2.0     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
 ```
 
 `Resources/Info.plist` is the bundle template, `Resources/AppIcon.icns` the icon (drawn by
@@ -146,7 +149,8 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 | Reduce-motion support | ✅ | Follows the system setting |
 | Theming: accent colour; light/dark | ◐ | Accent colour picker ✅; island stays black by design |
 | Low CPU footprint | ◐ | Event-driven where macOS allows (power, Bluetooth, WAL file, CoreAudio, KVO); 1 s polls remain for AppleScript players, volume and the notification store |
-| Sparkle auto-updates, signed & notarised build | ✗ | Needs a Developer ID and hosting; out of scope for a `swift run` project |
+| In-app updates from GitHub Releases | ✅ | Settings ▸ Updates: daily check, what's new, **Update Now** verifies the signature and swaps the bundle in place, then relaunches |
+| Notarised build (no Gatekeeper dialog on first install) | ✗ | Needs a paid Developer ID; `make-dmg.sh` has the path ready |
 
 ### Hard but differentiating
 | Feature | | Notes |
@@ -171,6 +175,10 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
   notifications grouped by app with Clear / Clear All. Grabber, Esc or clicking elsewhere closes it.
 - **Drag files onto the notch** → they land on the Shelf; drag them out again or AirDrop them.
 - **⌥ Space** (configurable) → launcher. Try `12*3+4^2`, `5 km to mi`, `timer 25`, `lock`, `dark`.
+- **Updates**: a new release shows up once as a HUD under the notch, as a line in the hover readout,
+  as **Update** in the shade and as **Update to x.y.z…** in the menu bar. Settings ▸ Updates has the
+  notes, **Update Now** and **Skip**; the daily check and the island announcement can be switched
+  off there. The check asks GitHub for the latest release and nothing else.
 - **Shortcuts**: `echo '{"title":"Build done","subtitle":"main · 42s","symbol":"hammer.fill","progress":1,"seconds":5}' > ~/Library/Application\ Support/NotchIsland/activity.json`
 
 ## Permissions
@@ -215,6 +223,7 @@ Releases from 1.0.1 on share one certificate, so a grant made to any of them car
 | `ShadeView.swift` | Shade: quick toggles, timer, calendar, media, shelf, clipboard, notifications |
 | `LiveActivity.swift` | `ActivityCenter` (HUD + long-running "sticky" activities) and the HUD view |
 | `Monitors.swift` | Battery, mic/camera/Focus, Bluetooth, Downloads, Clipboard, custom-activity file, visibility |
+| `Updater.swift`, `UpdatesSettings.swift` | GitHub Releases check, signature-verified in-place install and relaunch; the Settings ▸ Updates tab with the release notes |
 | `MediaController.swift` | Music/Spotify/VLC, Safari and Chromium browsers; every stream as a source, active-stream selection, transport, seek, artwork, system volume |
 | `MediaViews.swift` | Ears, level meter, media cards, volume slider |
 | `NotificationWatcher.swift` | Reads Notification Center's SQLite store (history + WAL watcher) |
@@ -232,6 +241,10 @@ Releases from 1.0.1 on share one certificate, so a grant made to any of them car
   (no personal data), which is how the screenshots in `docs/assets` are made; `NOTCHISLAND_QUERY`
   pre-fills the launcher.
 - `NOTCHISLAND_DEBUG=1` logs shade toggles and key-window loss.
+- `NOTCHISLAND_UPDATE_FEED=<url>` points the update check at another `releases/latest`-shaped JSON
+  (a `file://` one works; nothing is cached to the user's defaults then), and
+  `NOTCHISLAND_UPDATE_INSTALL=1` installs whatever it offers without a click. Together they exercise
+  the download → verify → swap → relaunch path against a scratch copy of the app.
 - Test notification: `osascript -e 'display notification "body" with title "Title"'`.
 
 ## Website

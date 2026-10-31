@@ -29,4 +29,9 @@ NotchIsland - first launch
    click Reset next to it, then allow it again. Entries with a terminal icon
    are leftovers from a development build and do not count.
 
+5. This is the last DMG you need. NotchIsland checks GitHub once a day and
+   says so in the island when a new version is out; Settings > Updates shows
+   what's new, and Update Now installs it in place (same signature, so your
+   permissions carry over, and no Gatekeeper dialog).
+
 Source, issues and releases: https://github.com/Edwardrem/NotchIsland

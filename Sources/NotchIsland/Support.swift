@@ -45,6 +45,7 @@ final class AppSettings: ObservableObject {
     @Pref("sounds", false) var sounds: Bool
     @Pref("accentHex", "#FFFFFF") var accentHex: String
     @Pref("translucentShade", false) var translucentShade: Bool
+    @Pref("islandShadow", true) var islandShadow: Bool                     // a window's shadow under the open island
     @Pref("hotkeyKeyCode", 49) var hotkeyKeyCode: Int                       // Space
     @Pref("hotkeyModifiers", 524288) var hotkeyModifiers: Int                // ⌥ (NSEvent.ModifierFlags.option)
 
@@ -65,6 +66,12 @@ final class AppSettings: ObservableObject {
     // Visibility
     @Pref("hideInFullscreen", false) var hideInFullscreen: Bool
     @Pref("hiddenApps", "") var hiddenApps: String                          // comma-separated bundle ids
+
+    // Updates (Settings ▸ Updates, see Updater.swift)
+    @Pref("updatesAutoCheck", true) var updatesAutoCheck: Bool              // ask GitHub once a day
+    @Pref("updatesNotify", true) var updatesNotify: Bool                    // HUD in the island when one is found
+    @Pref("updatesSkippedVersion", "") var updatesSkippedVersion: String
+    @Pref("updatesLastCheck", 0.0) var updatesLastCheck: Double             // timeIntervalSince1970
 
     var hiddenAppIDs: Set<String> {
         Set(hiddenApps.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })

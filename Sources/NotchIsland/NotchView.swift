@@ -8,10 +8,21 @@ import UniformTypeIdentifiers
 struct NotchView: View {
     @ObservedObject var state: IslandState
     @ObservedObject var settings = AppSettings.shared
+    @ObservedObject var updater = Updater.shared
     @State private var now = Date()
     private let clock = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     private var geo: NotchGeometry { .current }
+
+    /// A window's worth of shadow: soft, mostly below the surface, a few points at the sides. None
+    /// while the island is only the notch and its ears, which sit inside the menu bar.
+    private func shadowOpacity(_ layout: IslandLayout) -> Double {
+        guard settings.islandShadow else { return 0 }
+        switch layout.mode {
+        case .collapsed, .compact: return 0
+        default: return 0.3
+        }
+    }
 
     var body: some View {
         surface
@@ -29,13 +40,19 @@ struct NotchView: View {
         .frame(width: layout.surfaceWidth(g))
         .background(Color.black)
         .clipShape(IslandSurfaceShape(radius: layout.cornerRadius))
-        .shadow(color: .black.opacity(layout.mode == .collapsed ? 0 : 0.5), radius: 18, y: 8)
+        .shadow(color: .black.opacity(shadowOpacity(layout)), radius: 8, y: 4)
         .contentShape(Rectangle())
         .onHover { state.setHovering($0) }
         .onTapGesture {
             switch layout.mode {
             case .banner: state.openBanner()
-            case .activity: state.activities.dismissByUser()
+            case .activity:
+                if state.activity?.kind == .update {
+                    state.activities.dismiss(id: "update")
+                    SettingsWindowController.shared.show(tab: "updates")
+                } else {
+                    state.activities.dismissByUser()
+                }
             case .collapsed, .compact, .expanded: state.toggleShade()
             case .shade, .launcher: break   // inner controls handle taps
             }
@@ -131,6 +148,8 @@ struct NotchView: View {
                     recentRow(note)
                 } else if let hint = state.hint {
                     hintRow(hint)
+                } else if let release = updater.available {
+                    updateRow(release)
                 }
             }
         }
@@ -230,6 +249,25 @@ struct NotchView: View {
         .contentShape(Rectangle())
         .onTapGesture { if let pane = hint.settingsPane { PrivacyPane.open(pane) } }
         .help(hint.settingsPane == nil ? hint.text : "\(hint.text) Click to open System Settings.")
+    }
+
+    /// A newer release is out; the row opens Settings ▸ Updates with the notes and the Update button.
+    private func updateRow(_ release: AppRelease) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(UI.info)
+            Text("NotchIsland \(release.version) is available").font(UI.body(10.5)).foregroundStyle(.secondary).lineLimit(1)
+            Spacer(minLength: 0)
+            Text("What's new")
+                .font(UI.caption())
+                .foregroundStyle(Theme.accent)
+                .fixedSize()
+        }
+        .padding(.horizontal, 4)
+        .contentShape(Rectangle())
+        .onTapGesture { SettingsWindowController.shared.show(tab: "updates") }
+        .help("Open Settings ▸ Updates")
     }
 }
 

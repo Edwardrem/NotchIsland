@@ -33,6 +33,7 @@ final class MenuBarController: NSObject {
         launcher.target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: "Check for Updates…", action: #selector(updates), keyEquivalent: "").target = self
         let login = menu.addItem(withTitle: "Launch at Login", action: #selector(toggleLogin), keyEquivalent: "")
         login.target = self
         login.state = LaunchAtLogin.isEnabled ? .on : .off
@@ -45,6 +46,10 @@ final class MenuBarController: NSObject {
     @objc private func shade() { openShade?() }
     @objc private func launcherAction() { openLauncher?() }
     @objc private func settings() { openSettings?() }
+    @objc private func updates() {
+        if Updater.shared.newer == nil { Updater.shared.check(manual: true) }
+        SettingsWindowController.shared.show(tab: "updates")
+    }
     @objc private func toggleLogin(_ sender: NSMenuItem) {
         LaunchAtLogin.set(!LaunchAtLogin.isEnabled)
         sender.state = LaunchAtLogin.isEnabled ? .on : .off
@@ -59,6 +64,9 @@ extension MenuBarController: NSMenuDelegate {
         }
         for item in menu.items where item.action == #selector(launcherAction) {
             item.title = "Search Apps   \(AppSettings.shared.hotkeyDescription)"
+        }
+        for item in menu.items where item.action == #selector(updates) {
+            item.title = Updater.shared.available.map { "Update to \($0.version)…" } ?? "Check for Updates…"
         }
     }
 }

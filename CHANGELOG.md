@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.2.0 · 2026-10-31
+
+### Added
+- Updates from inside the app. Settings ▸ Updates asks GitHub Releases for the latest version
+  (once a day while *Check for updates* is on, or with **Check Now**), shows what's new, and
+  **Update Now** downloads the DMG, checks that the app inside is signed with the same certificate
+  as the running copy, swaps it into place and relaunches. Every permission grant carries over, and
+  Gatekeeper's "could not verify" dialog does not appear because nothing goes through a browser. A
+  new version is announced once in the island (tap the HUD for the notes), as a line in the hover
+  readout, as an **Update** button in the shade and as **Update to x.y.z…** in the menu bar;
+  **Skip** silences one version. A copy that cannot be replaced (folder not writable) gets the DMG
+  opened in Finder instead; a source or ad-hoc build only links to the release page.
+- Settings ▸ General ▸ Theme: *Shadow under the open island* switch.
+
+### Changed
+- The island's shadow is a window's now: soft and mostly below the surface, instead of the dark
+  halo that bled some 25 px into the menu bar on either side of the open island. The notch and its
+  ears cast none.
+- The update check is the app's only network request and sends nothing about you or your Mac;
+  README and website say so instead of "no network".
+
 ## 1.1.1 · 2026-10-30
 
 ### Fixed

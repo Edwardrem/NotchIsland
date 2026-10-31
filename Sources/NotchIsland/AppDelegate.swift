@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel = NotchPanel(state: state)
         panel.show()
         state.start()
+        Updater.shared.startSchedule()   // launch + daily check against GitHub Releases (Settings ▸ Updates)
 
         // Menu bar icon
         menuBar.openShade = { [weak self] in self?.state.openShade() }

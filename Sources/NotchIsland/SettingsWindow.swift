@@ -8,11 +8,18 @@ extension Notification.Name {
     static let notchModulesChanged = Notification.Name("NotchIsland.modulesChanged")
 }
 
+/// Which Settings tab is showing; shared so the menu bar, the island and the updater can pick one.
+final class SettingsRouter: ObservableObject {
+    static let shared = SettingsRouter()
+    @Published var tab = ProcessInfo.processInfo.environment["NOTCHISLAND_SETTINGS_TAB"] ?? "general"
+}
+
 final class SettingsWindowController {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
 
-    func show() {
+    func show(tab: String? = nil) {
+        if let tab { SettingsRouter.shared.tab = tab }
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 600),
                              styleMask: [.titled, .closable, .miniaturizable],
@@ -35,13 +42,14 @@ struct SettingsView: View {
     @State private var accent: Color = Theme.accent
     @State private var perms: [Permission: Permissions.Status] = [:]
     @State private var permissionNote: String?
-    @State private var tab = ProcessInfo.processInfo.environment["NOTCHISLAND_SETTINGS_TAB"] ?? "general"
+    @ObservedObject private var router = SettingsRouter.shared
 
     var body: some View {
-        TabView(selection: $tab) {
+        TabView(selection: $router.tab) {
             general.tabItem { Label("General", systemImage: "gearshape") }.tag("general")
             modules.tabItem { Label("Modules", systemImage: "square.grid.2x2") }.tag("modules")
             visibility.tabItem { Label("Visibility", systemImage: "eye") }.tag("visibility")
+            UpdatesSettingsView().tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag("updates")
             permissions.tabItem { Label("Permissions", systemImage: "lock.shield") }.tag("permissions")
         }
         .frame(width: 540, height: 600)
@@ -91,6 +99,7 @@ struct SettingsView: View {
                     .onChange(of: accent) { newValue in settings.accentHex = NSColor(newValue).hexString }
                 Button("Reset to white") { accent = .white; settings.accentHex = "#FFFFFF" }
                 Toggle("Slightly translucent shade cards", isOn: $settings.translucentShade)
+                Toggle("Shadow under the open island (like a window's)", isOn: $settings.islandShadow)
                 Text("The island itself stays true black so it blends with the bezel.")
                     .font(.caption).foregroundStyle(.secondary)
             }
