@@ -74,6 +74,8 @@ struct NowPlaying: Equatable {
     var isMuted = false          // browser: the element is muted, so it ranks under audible streams
     var sourceTabID: String = "" // browser: the tab to send commands to (Safari: "windowID:index")
     var sourceHost: String = ""  // browser: the page's host ("youtube.com"), to tell twin tabs apart
+    var sourcePID: Int32 = 0     // system feed: the process the item belongs to
+    var isElected = false        // system feed: the app macOS sends transport commands to
 
     /// Identifies the stream across polls: the app, plus the tab for browsers.
     var sourceKey: String { "\(player.bundleID)|\(sourceTabID)" }
@@ -211,7 +213,7 @@ final class MediaController: ObservableObject {
         np.isPlaying.toggle()
         nowPlaying = np                                    // optimistic; the next poll confirms
         if np.player.isSystem {
-            sendSystem("toggle")
+            sendSystem("toggle", for: np)
         } else if np.player.isBrowser {
             runBrowserCommand(np, js: Self.toggleJS)
         } else {
@@ -221,14 +223,14 @@ final class MediaController: ObservableObject {
 
     func next() {
         guard let np = nowPlaying else { return }
-        if np.player.isSystem { sendSystem("next") }
+        if np.player.isSystem { sendSystem("next", for: np) }
         else if np.player.isBrowser { SystemMediaKey.post(SystemMediaKey.next) }
         else { send(np.player == .vlc ? "next" : "next track", to: np.player) }
     }
 
     func previous() {
         guard let np = nowPlaying else { return }
-        if np.player.isSystem { sendSystem("previous") }
+        if np.player.isSystem { sendSystem("previous", for: np) }
         else if np.player.isBrowser { SystemMediaKey.post(SystemMediaKey.previous) }
         else { send(np.player == .vlc ? "previous" : "previous track", to: np.player) }
     }
@@ -240,7 +242,7 @@ final class MediaController: ObservableObject {
         nowPlaying = np
         let value = Int(seconds)
         if np.player.isSystem {
-            sendSystem("seek:\(value)")
+            sendSystem("seek:\(value)", for: np)
         } else if np.player.isBrowser {
             runBrowserCommand(np, js: "(function(){var e=[].slice.call(document.querySelectorAll('video,audio'));var m=e.filter(function(x){return !x.paused;})[0]||e.filter(function(x){return x.readyState>2;})[0];if(m){m.currentTime=\(value);}})()")
         } else {
@@ -261,10 +263,37 @@ final class MediaController: ObservableObject {
         NSWorkspace.shared.openApplication(at: url, configuration: config)
     }
 
-    /// Transport for a system-feed stream goes through MediaRemote (play, pause, next, seek).
-    private func sendSystem(_ command: String) {
-        bridge.send(command)
-        queue.asyncAfter(deadline: .now() + 0.5) { self.poll() }
+    /// Transport for a system-feed stream. MediaRemote delivers a command from NotchIsland's helper
+    /// to the app macOS has elected, whichever app it names, so the feed carries commands for that
+    /// app only. The TV app and QuickTime Player take the same commands by AppleScript otherwise
+    /// (Automation permission, asked once); any other app cannot be reached then and is left alone.
+    private func sendSystem(_ command: String, for np: NowPlaying) {
+        if np.isElected {
+            bridge.send(command, to: np.player.bundleID, pid: np.sourcePID)
+            queue.asyncAfter(deadline: .now() + 0.5) { self.poll() }
+        } else if let verb = Self.scriptedVerb(for: command, stream: np) {
+            send(verb, to: np.player, cache: !command.hasPrefix("seek:"))
+        } else {
+            NSLog("NotchIsland media: %@ not sent to %@: it is not the app macOS has elected", command, np.player.label)
+        }
+    }
+
+    /// The AppleScript for a feed command (play | pause | toggle | next | previous | seek:<s>), for
+    /// the apps that have a dictionary for it.
+    private static func scriptedVerb(for command: String, stream np: NowPlaying) -> String? {
+        let seek = command.hasPrefix("seek:") ? String(command.dropFirst(5)) : nil
+        switch np.player.bundleID {
+        case "com.apple.TV":
+            if let seek = seek { return "set player position to \(seek)" }
+            return ["play": "play", "pause": "pause", "toggle": "playpause",
+                    "next": "next track", "previous": "previous track"][command]
+        case "com.apple.QuickTimePlayerX":
+            if let seek = seek { return "set current time of document 1 to \(seek)" }
+            return ["play": "play document 1", "pause": "pause document 1",
+                    "toggle": np.isPlaying ? "pause document 1" : "play document 1"][command]
+        default:
+            return nil
+        }
     }
 
     private func send(_ verb: String, to player: NowPlaying.Player, cache: Bool = true) {
@@ -300,7 +329,7 @@ final class MediaController: ObservableObject {
         // Whatever else the system feed names (TV, Podcasts, QuickTime Player, a browser whose
         // JavaScript switch is off, Music without Automation…), unless that app was read the
         // richer way above.
-        if let np = systemStream(), !found.contains(where: { $0.player.bundleID == np.player.bundleID }) {
+        for np in systemStreams() where !found.contains(where: { $0.player.bundleID == np.player.bundleID }) {
             found.append(np)
         }
 
@@ -388,25 +417,33 @@ final class MediaController: ObservableObject {
 
     // MARK: - System feed
 
-    /// The item on the system Now Playing feed as one stream, or nil when there is none.
-    private func systemStream() -> NowPlaying? {
-        guard let s = bridge.snapshot, !(s.title.isEmpty && s.artist.isEmpty) else { return nil }
-        guard let bundleID = s.bundleID ?? NSRunningApplication(processIdentifier: s.pid)?.bundleIdentifier,
-              bundleID != Bundle.main.bundleIdentifier else { return nil }
-        let player: NowPlaying.Player
-        if let known = systemPlayers[bundleID] {
-            player = known
-        } else {
-            player = NowPlaying.Player.known.first { $0.bundleID == bundleID }
-                .map { NowPlaying.Player(bundleID: $0.bundleID, kind: .system, name: $0.name, label: $0.label) }
-                ?? .system(bundleID: bundleID, pid: s.pid)
-            systemPlayers[bundleID] = player
+    /// Every item on the system Now Playing feed as a stream of its own, one per app, the app
+    /// macOS elected first. Empty when nothing is published.
+    private func systemStreams() -> [NowPlaying] {
+        var streams: [NowPlaying] = []
+        for s in bridge.snapshots {
+            let bundleID = s.bundleID
+            guard bundleID != Bundle.main.bundleIdentifier,
+                  !streams.contains(where: { $0.player.bundleID == bundleID }) else { continue }
+            let player: NowPlaying.Player
+            if let known = systemPlayers[bundleID] {
+                player = known
+            } else {
+                player = NowPlaying.Player.known.first { $0.bundleID == bundleID }
+                    .map { NowPlaying.Player(bundleID: $0.bundleID, kind: .system, name: $0.name, label: $0.label) }
+                    ?? .system(bundleID: bundleID, pid: s.pid)
+                systemPlayers[bundleID] = player
+            }
+            var np = NowPlaying(player: player, title: s.title.isEmpty ? player.name : s.title, artist: s.artist,
+                                album: s.album, isPlaying: s.isPlaying, elapsed: s.elapsed, duration: s.duration,
+                                trackID: s.itemID.isEmpty ? s.title : s.itemID,
+                                artworkHint: s.artworkKey.isEmpty ? "" : "mr:" + s.artworkKey,
+                                artwork: nil, sampledAt: s.receivedAt)
+            np.sourcePID = s.pid
+            np.isElected = s.isElected
+            streams.append(np)
         }
-        return NowPlaying(player: player, title: s.title.isEmpty ? player.name : s.title, artist: s.artist,
-                          album: s.album, isPlaying: s.isPlaying, elapsed: s.elapsed, duration: s.duration,
-                          trackID: s.itemID.isEmpty ? s.title : s.itemID,
-                          artworkHint: s.artworkKey.isEmpty ? "" : "mr:" + s.artworkKey,
-                          artwork: nil, sampledAt: s.receivedAt)
+        return streams
     }
 
     // MARK: - App players

@@ -59,7 +59,7 @@ usage strings), so permission prompts name the app properly even when it is not 
 
 ```bash
 scripts/signing-identity.sh   # once per Mac: creates the "NotchIsland Developer" signing identity
-scripts/make-dmg.sh 1.3.1     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
+scripts/make-dmg.sh 1.3.2     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
 ```
 
 `Resources/Info.plist` is the bundle template, `Resources/AppIcon.icns` the icon (drawn by
@@ -155,7 +155,7 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 ### Hard but differentiating
 | Feature | | Notes |
 |---|---|---|
-| Now Playing from any app (TV, Podcasts, QuickTime Player, IINA…) | ✅ | MediaRemote answers only Apple processes since macOS 15.4, so the feed is read through Apple's own `/usr/bin/perl`, which loads a small adapter dylib shipped in the bundle (`Sources/MediaRemoteAdapter`) and streams JSON lines; transport goes the same way |
+| Now Playing from any app (TV, Podcasts, QuickTime Player, IINA…) | ✅ | MediaRemote answers only Apple processes since macOS 15.4, so the feed is read through Apple's own `/usr/bin/perl`, which loads a small adapter dylib shipped in the bundle (`Sources/MediaRemoteAdapter`) and streams JSON lines, one entry per app that publishes an item; transport goes the same way to the app macOS has elected, and by AppleScript to the TV app and QuickTime Player otherwise |
 | Replacing the system volume HUD | ✗ | Requires suppressing the OSD process |
 | Per-app notification capture via the Notification Center database | ✅ | |
 | Shortcuts.app integration (custom live activities) | ✅ | Write JSON to `~/Library/Application Support/NotchIsland/activity.json` from a "Run Shell Script" action |
@@ -186,7 +186,7 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 | Feature | What it needs |
 |---|---|
 | Hotkey swallow; browser ⏮ ⏭ (media keys) | **Accessibility**: asked on first launch, or with **Allow…** in Settings ▸ Permissions. From `swift run` the grant belongs to the binary's path (`.build/debug/NotchIsland`) and is made again after each build |
-| Now Playing, volume, dark mode | **Automation** → each scripted player/browser and System Events (asked on first use). The system feed (TV, Podcasts, QuickTime Player, any other app) needs no permission |
+| Now Playing, volume, dark mode | **Automation** → each scripted player/browser and System Events (asked on first use). The system feed (TV, Podcasts, QuickTime Player, any other app) needs no permission to read; play/pause/seek for the TV app or QuickTime Player while another app is the one macOS elected goes by AppleScript and asks for Automation once |
 | Browser Now Playing | Chromium browsers (Chrome, Brave, Edge, Arc, Vivaldi, Opera…): **View ▸ Developer ▸ Allow JavaScript from Apple Events**, once per browser. Safari: Settings ▸ Advanced ▸ *Show features for web developers*, then **Develop ▸ Developer Settings ▸ Allow JavaScript from Apple Events**. Firefox has no scripting bridge. Without the switch a browser still shows as one stream through the system feed, without tab chips |
 | Notifications | **Full Disk Access**: Notification Center's store under `~/Library/Group Containers/group.com.apple.usernoted/` is protected by macOS. The island and Settings ▸ Permissions show a hint until it is granted; relaunch afterwards |
 | Calendar | Asked when you press **Allow** in the shade |
@@ -224,7 +224,7 @@ Releases from 1.0.1 on share one certificate, so a grant made to any of them car
 | `LiveActivity.swift` | `ActivityCenter` (HUD + long-running "sticky" activities) and the HUD view |
 | `Monitors.swift` | Battery, mic/camera/Focus, Bluetooth, Downloads, Clipboard, custom-activity file, visibility |
 | `Updater.swift`, `UpdatesSettings.swift` | GitHub Releases check, signature-verified in-place install and relaunch; the Settings ▸ Updates tab with the release notes |
-| `MediaRemoteBridge.swift`, `Sources/MediaRemoteAdapter` | The system Now Playing feed: Apple's perl loads the adapter dylib (MediaRemote answers only Apple processes since macOS 15.4) and streams one JSON line per change; transport commands run the same loader once |
+| `MediaRemoteBridge.swift`, `Sources/MediaRemoteAdapter` | The system Now Playing feed: Apple's perl loads the adapter dylib (MediaRemote answers only Apple processes since macOS 15.4) and streams one JSON line per change listing every app that publishes; a watchdog on each side replaces a feed that goes quiet; transport commands run the same loader once, for the elected app |
 | `MediaController.swift` | Music/Spotify/VLC, Safari and Chromium browsers; every stream as a source, active-stream selection, transport, seek, artwork, system volume |
 | `MediaViews.swift` | Ears, level meter, media cards, volume slider |
 | `NotificationWatcher.swift` | Reads Notification Center's SQLite store (history + WAL watcher) |
@@ -239,6 +239,8 @@ Releases from 1.0.1 on share one certificate, so a grant made to any of them car
   launch; with `settings`, `NOTCHISLAND_SETTINGS_TAB=general|modules|visibility|permissions` picks the tab.
 - `NOTCHISLAND_DEMO=1` swaps the live media, notification and clipboard sources for sample content
 - `NOTCHISLAND_MEDIA_LOG=1` logs every media poll's streams and the one the island picked (stderr)
+- `NOTCHISLAND_MRA_TEST_STALL=<n>` wedges the Now Playing feed after n lines, the way the 1.3.1 deadlock did,
+  to watch the app replace it (`NotchIsland media: … silent for 8 s, replacing it`)
   (no personal data), which is how the screenshots in `docs/assets` are made; `NOTCHISLAND_QUERY`
   pre-fills the launcher.
 - `NOTCHISLAND_DEBUG=1` logs shade toggles and key-window loss.

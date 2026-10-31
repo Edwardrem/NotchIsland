@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.3.2 · 2026-10-31
+
+### Fixed
+- A stream from the system feed (the TV app, QuickTime Player…) dropped out of the island a few
+  minutes in, as soon as anything about playback changed. The feed process wedged on its first
+  MediaRemote notification: the notification arrived on the queue the feed worked on, and
+  Foundation waited there for the observer to finish, so nothing ran again and the island lost the
+  stream ten seconds later. Notifications, work and replies now have queues of their own, and a
+  watchdog in the feed plus one in the app replace a feed that goes quiet before the island notices.
+
+### Changed
+- The feed reports every app that publishes an item, not only the one macOS has elected as "now
+  playing". With a browser tab paused in the background and the TV app playing, the island keeps
+  the TV app; each app is its own source chip.
+- Transport for a feed stream reaches the elected app through MediaRemote as before. For any other
+  app the command would land on the elected one (macOS routes it there whatever app is named), so
+  it is refused instead, and the TV app and QuickTime Player are driven by AppleScript, which asks
+  for Automation permission once.
+
 ## 1.3.1 · 2026-10-31
 
 ### Fixed
