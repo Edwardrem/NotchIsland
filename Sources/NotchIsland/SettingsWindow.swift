@@ -144,6 +144,25 @@ struct SettingsView: View {
 
     private var visibility: some View {
         Form {
+            Section("Quiet Mode") {
+                Toggle("Quiet Mode", isOn: Binding(
+                    get: { settings.quietManualOn },
+                    set: { settings.setQuiet($0) }))
+                if settings.quietManualOn, settings.quietUntil > 0 {
+                    Text("On until \(Date(timeIntervalSince1970: settings.quietUntil).formatted(date: .omitted, time: .shortened)).")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Toggle("Turn on by itself while a macOS Focus is on", isOn: $settings.quietWithFocus)
+                Toggle("Hide the island completely (no artwork, timer or indicators beside the notch)", isOn: $settings.quietHidesEars)
+                Text("While quiet, nothing pops out of the notch: no volume, charger, Bluetooth, download or update activities and no notification banners. Hover, click and \(settings.hotkeyDescription) still open the island, and notifications keep collecting in the shade. Also in the shade's quick toggles, the menu bar icon and app search (\"quiet\").")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Section("Still let through while quiet") {
+                Toggle("Timer finished", isOn: $settings.quietAllowTimer)
+                Toggle("Low battery", isOn: $settings.quietAllowLowBattery)
+                Toggle("Activities pushed from Shortcuts", isOn: $settings.quietAllowCustom)
+            }
             Section("Hide the island") {
                 Toggle("When the frontmost app is full screen", isOn: $settings.hideInFullscreen)
                 VStack(alignment: .leading, spacing: 4) {

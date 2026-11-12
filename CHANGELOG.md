@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.4.0 · 2026-11-12
+
+### Added
+- Quiet Mode. One switch and nothing pops out of the notch: no volume, charger, Bluetooth,
+  download or update activities, no notification banners, and by default no ears beside the notch
+  either. Hover, click and the hotkey still open the island, and notifications keep collecting in
+  the shade. Switch it from the new Quiet tile in the shade, **Quiet Mode** or **Quiet for 1 Hour**
+  in the menu bar, or `quiet` in the launcher.
+- Settings ▸ Visibility ▸ Quiet Mode: turn it on by itself while a macOS Focus is on, keep the ears
+  (artwork, timer ring, indicators) while quiet, and choose what may still break through: timer
+  finished and low battery (on by default), activities pushed from Shortcuts (off by default).
+- A bell-slash chip in the hover readout while the island is quiet, so a silent notch is never a
+  mystery.
+
+### Changed
+- The shade's quick toggles are six tiles: Dark Mode, Keep Awake, Wi-Fi, Mirror, Quiet, Focus.
+
 ## 1.3.2 · 2026-10-31
 
 ### Fixed

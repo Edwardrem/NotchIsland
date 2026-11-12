@@ -59,7 +59,7 @@ usage strings), so permission prompts name the app properly even when it is not 
 
 ```bash
 scripts/signing-identity.sh   # once per Mac: creates the "NotchIsland Developer" signing identity
-scripts/make-dmg.sh 1.3.2     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
+scripts/make-dmg.sh 1.4.0     # release build → dist/NotchIsland.app → dist/NotchIsland.dmg
 ```
 
 `Resources/Info.plist` is the bundle template, `Resources/AppIcon.icns` the icon (drawn by
@@ -104,7 +104,8 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 | Drag-into-island detection | ✅ | Island expands with a drop target; files land on the Shelf |
 | Every Space, over full-screen apps | ✅ | `canJoinAllSpaces`, `fullScreenAuxiliary`; optional "hide in full screen" |
 | Multi-monitor | ◐ | Lives on the notched display; 200 pt stand-in on Macs without a notch |
-| Idle / quiet mode | ✅ | Collapsed = just the notch |
+| Idle | ✅ | Collapsed = just the notch |
+| Quiet Mode | ✅ | One switch (shade tile, menu bar, launcher `quiet`, Settings ▸ Visibility): no HUDs, no banners and by default no ears; by hand, for an hour, or following a macOS Focus. Hover, click and the hotkey still open the island; timer-finished and low-battery break through unless switched off, Shortcuts activities if switched on |
 | Do Not Disturb / Focus | ◐ | Focus *status* is shown (ears, hover, shade); toggling Focus has no public API |
 
 ### Live activities
@@ -135,13 +136,13 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
 | File search | ✅ | Spotlight (`NSMetadataQuery`) from 3+ characters |
 | Quick actions: lock, sleep, empty trash | ✅ | plus dark mode, keep-awake, Wi-Fi, mirror, settings |
 | Shelf / drop zone, drag out, AirDrop | ✅ | |
-| Quick toggles: Dark Mode, Keep Awake, Wi-Fi, Mirror, Focus | ✅ | Focus tile shows the active mode (e.g. "Do Not Disturb") and opens Focus settings; Bluetooth toggle ✗ (private API) |
+| Quick toggles: Dark Mode, Keep Awake, Wi-Fi, Mirror, Quiet, Focus | ✅ | Focus tile shows the active mode (e.g. "Do Not Disturb") and opens Focus settings; Bluetooth toggle ✗ (private API) |
 | Camera mirror / preview | ✅ | In the shade |
 
 ### Polish and settings
 | Feature | | Notes |
 |---|---|---|
-| Settings window: per-module toggles, hover delay, hide for apps / full screen | ✅ | Menu bar ▸ Settings… or ⚙ in the shade |
+| Settings window: per-module toggles, hover delay, Quiet Mode, hide for apps / full screen | ✅ | Menu bar ▸ Settings… or ⚙ in the shade |
 | Launch at login | ✅ | LaunchAgent pointing at the current binary (re-enable after moving/rebuilding elsewhere) |
 | Menu bar icon toggle | ✅ | |
 | `LSUIElement` (no Dock icon) | ✅ | |
@@ -169,7 +170,7 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
   started/finished, timer done, custom activities. Tap to dismiss.
 - **Hover** → clock and date, Mic/Camera/Focus/Awake chips, battery, a bell with the unread count,
   then the running timer, next event, Now Playing and the last notification.
-- **Click** → the shade: clock header, quick toggles (Dark Mode, Keep Awake, Wi-Fi, Mirror, Focus),
+- **Click** → the shade: clock header, quick toggles (Dark Mode, Keep Awake, Wi-Fi, Mirror, Quiet, Focus),
   Timer, next event with Join, Now Playing with scrubber, system volume and source chips when
   several streams are live, Shelf, Clipboard, then
   notifications grouped by app with Clear / Clear All. Grabber, Esc or clicking elsewhere closes it.
@@ -179,6 +180,11 @@ Legend: ✅ done · ◐ partial · ✗ not in this build (reason in the notes be
   as **Update** in the shade and as **Update to x.y.z…** in the menu bar. Settings ▸ Updates has the
   notes, **Update Now** and **Skip**; the daily check and the island announcement can be switched
   off there. The check asks GitHub for the latest release and nothing else.
+- **Quiet Mode**: the Quiet tile in the shade, **Quiet Mode** / **Quiet for 1 Hour** in the menu bar,
+  or `quiet` in the launcher. While it is on nothing pops out of the notch (no HUDs, no banners, no
+  ears); the hover readout carries a bell-slash chip so you know why. Settings ▸ Visibility can tie
+  it to your macOS Focus, keep the ears, and pick what still gets through (timer finished, low
+  battery, Shortcuts activities).
 - **Shortcuts**: `echo '{"title":"Build done","subtitle":"main · 42s","symbol":"hammer.fill","progress":1,"seconds":5}' > ~/Library/Application\ Support/NotchIsland/activity.json`
 
 ## Permissions
@@ -243,6 +249,7 @@ Releases from 1.0.1 on share one certificate, so a grant made to any of them car
   to watch the app replace it (`NotchIsland media: … silent for 8 s, replacing it`)
   (no personal data), which is how the screenshots in `docs/assets` are made; `NOTCHISLAND_QUERY`
   pre-fills the launcher.
+- `NOTCHISLAND_QUIET=1` forces Quiet Mode for that run without touching the saved settings.
 - `NOTCHISLAND_DEBUG=1` logs shade toggles and key-window loss.
 - `NOTCHISLAND_UPDATE_FEED=<url>` points the update check at another `releases/latest`-shaped JSON
   (a `file://` one works; nothing is cached to the user's defaults then), and

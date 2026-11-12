@@ -38,6 +38,11 @@ final class IslandState: ObservableObject {
     @Published private(set) var stickyActivity: LiveActivity? { didSet { refreshLayout() } }
     @Published private(set) var timerActive = false { didSet { refreshLayout() } }
     @Published private(set) var indicatorsOn = false { didSet { refreshLayout() } }
+    /// Quiet Mode in effect: switched on by hand (optionally for an hour) or following a macOS
+    /// Focus. Nothing pops out of the notch (no HUDs, no banners, by default no ears either);
+    /// hover, click and the hotkey still open the island, and notifications still collect in the
+    /// shade. Settings ▸ Visibility picks the few activities that may break through.
+    @Published private(set) var isQuiet = false { didSet { refreshLayout() } }
     @Published var showMirror = false
     @Published var showAllClipboard = false
 
@@ -63,6 +68,7 @@ final class IslandState: ObservableObject {
 
     private var bannerTimer: DispatchWorkItem?
     private var hoverWork: DispatchWorkItem?
+    private var quietExpiry: DispatchWorkItem?
     private var notificationProblem: IslandHint?
     private var accessibilityProblem: IslandHint?
     private var cancellables = Set<AnyCancellable>()
@@ -133,6 +139,16 @@ final class IslandState: ObservableObject {
             }
             .store(in: &cancellables)
 
+        activities.allows = { [weak self] in self?.allowsWhileQuiet($0) ?? true }
+        status.$focusName
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refreshQuiet() }
+            .store(in: &cancellables)
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.refreshQuiet()
+        }
+        refreshQuiet()
+
         battery.onEvent = { [weak self] in self?.show($0, when: \.batteryAlertsEnabled) }
         bluetooth.onEvent = { [weak self] in self?.show($0, when: \.bluetoothEnabled) }
         downloads.onEvent = { [weak self] in self?.show($0, when: \.downloadsEnabled) }
@@ -178,6 +194,58 @@ final class IslandState: ObservableObject {
     private func toggle(_ name: String, _ enabled: Bool, on: () -> Void, off: () -> Void) {
         if enabled, !running.contains(name) { running.insert(name); on() }
         else if !enabled, running.contains(name) { running.remove(name); off() }
+    }
+
+    // MARK: - Quiet Mode
+
+    func toggleQuiet() { settings.setQuiet(!settings.quietManualOn) }
+
+    /// Why the island is quiet, for the hover chip and tooltips; nil when it is not.
+    var quietReason: String? {
+        guard isQuiet else { return nil }
+        if settings.quietManualOn {
+            guard settings.quietUntil > 0 else { return "Quiet Mode is on" }
+            let end = Date(timeIntervalSince1970: settings.quietUntil)
+            return "Quiet until \(end.formatted(date: .omitted, time: .shortened))"
+        }
+        return "Quiet while \(status.focusName ?? "Focus") is on"
+    }
+
+    private func refreshQuiet() {
+        quietExpiry?.cancel()
+        if settings.quietMode, settings.quietUntil > 0 {
+            let left = settings.quietUntil - Date().timeIntervalSince1970
+            if left <= 0 {
+                settings.setQuiet(false)      // posts didChange, which lands back here
+                return
+            }
+            let work = DispatchWorkItem { [weak self] in self?.refreshQuiet() }
+            quietExpiry = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + left + 0.5, execute: work)
+        }
+        // NOTCHISLAND_QUIET=1 forces it for previews without touching the saved settings.
+        let quiet = settings.quietManualOn || (settings.quietWithFocus && status.focusName != nil)
+            || ProcessInfo.processInfo.environment["NOTCHISLAND_QUIET"] == "1"
+        if quiet != isQuiet {
+            withAnimation(Motion.quick) { isQuiet = quiet }
+            if quiet {
+                activities.silence()
+                dismissBanner()
+            }
+        } else if quiet {
+            refreshLayout()                   // "hide the ears" may have been flipped
+        }
+    }
+
+    /// The gate every live activity passes (ActivityCenter.allows).
+    private func allowsWhileQuiet(_ activity: LiveActivity) -> Bool {
+        guard isQuiet else { return true }
+        switch activity.kind {
+        case .timer: return settings.quietAllowTimer
+        case .battery: return settings.quietAllowLowBattery && activity.id == "battery.low"
+        case .custom: return settings.quietAllowCustom
+        default: return false
+        }
     }
 
     private func volumeChanged(_ value: Double) {
@@ -226,7 +294,8 @@ final class IslandState: ObservableObject {
 
     private func refreshLayout() {
         var l = IslandLayout()
-        let ears = media != nil || timerActive || indicatorsOn || stickyActivity != nil
+        let ears = (media != nil || timerActive || indicatorsOn || stickyActivity != nil)
+            && !(isQuiet && settings.quietHidesEars)
         l.mode = isLauncherOpen ? .launcher
                : isShadeOpen ? .shade
                : banner != nil ? .banner
@@ -296,7 +365,7 @@ final class IslandState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.recentLifetime + 1) { [weak self] in
             self?.refreshLayout()
         }
-        guard !isShadeOpen, !isLauncherOpen else { return }
+        guard !isShadeOpen, !isLauncherOpen, !isQuiet else { return }
         withAnimation(Motion.spring) { banner = note }
         Feedback.tap()
         if isExpanded { bannerTimer?.cancel() } else { scheduleBannerDismiss(after: 6) }
@@ -441,6 +510,8 @@ final class IslandState: ObservableObject {
                 self?.openShade()
             },
             QuickAction(id: "pomodoro", title: "Start 25 minute Pomodoro", symbol: "timer", keywords: ["pomodoro", "focus", "timer"]) { [weak self] in self?.timer.start(minutes: 25) },
+            QuickAction(id: "quiet", title: "Toggle Quiet Mode", symbol: "bell.slash.fill", keywords: ["quiet", "silent", "mute", "dnd", "disturb", "hide"]) { [weak self] in self?.toggleQuiet() },
+            QuickAction(id: "quiet.hour", title: "Quiet Mode for 1 Hour", symbol: "bell.slash.fill", keywords: ["quiet", "silent", "mute", "hour"]) { [weak self] in self?.settings.setQuiet(true, for: 3600) },
             QuickAction(id: "settings", title: "NotchIsland Settings", symbol: "gear", keywords: ["settings", "preferences", "options"]) { SettingsWindowController.shared.show() },
         ]
     }

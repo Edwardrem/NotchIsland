@@ -67,6 +67,15 @@ final class AppSettings: ObservableObject {
     @Pref("hideInFullscreen", false) var hideInFullscreen: Bool
     @Pref("hiddenApps", "") var hiddenApps: String                          // comma-separated bundle ids
 
+    // Quiet Mode (Settings ▸ Visibility, see IslandState.isQuiet)
+    @Pref("quietMode", false) var quietMode: Bool                           // switched on by hand
+    @Pref("quietUntil", 0.0) var quietUntil: Double                         // timeIntervalSince1970; 0 = until switched off
+    @Pref("quietWithFocus", false) var quietWithFocus: Bool                 // quiet whenever a macOS Focus is on
+    @Pref("quietHidesEars", true) var quietHidesEars: Bool                  // no compact ears either: nothing at all
+    @Pref("quietAllowTimer", true) var quietAllowTimer: Bool                // "Timer finished" still shows
+    @Pref("quietAllowLowBattery", true) var quietAllowLowBattery: Bool
+    @Pref("quietAllowCustom", false) var quietAllowCustom: Bool             // activities pushed from Shortcuts
+
     // Updates (Settings ▸ Updates, see Updater.swift)
     @Pref("updatesAutoCheck", true) var updatesAutoCheck: Bool              // ask GitHub once a day
     @Pref("updatesNotify", true) var updatesNotify: Bool                    // HUD in the island when one is found
@@ -75,6 +84,17 @@ final class AppSettings: ObservableObject {
 
     var hiddenAppIDs: Set<String> {
         Set(hiddenApps.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+    }
+
+    /// Quiet Mode as switched by hand: on, and not past its "for an hour" deadline.
+    var quietManualOn: Bool {
+        quietMode && (quietUntil == 0 || quietUntil > Date().timeIntervalSince1970)
+    }
+
+    /// `seconds` nil = until switched off.
+    func setQuiet(_ on: Bool, for seconds: TimeInterval? = nil) {
+        quietUntil = on ? (seconds.map { Date().timeIntervalSince1970 + $0 } ?? 0) : 0
+        quietMode = on
     }
 
     var hotkeyFlags: NSEvent.ModifierFlags {

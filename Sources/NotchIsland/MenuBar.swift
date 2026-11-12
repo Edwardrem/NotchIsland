@@ -32,6 +32,9 @@ final class MenuBarController: NSObject {
         let launcher = menu.addItem(withTitle: "Search Apps", action: #selector(launcherAction), keyEquivalent: "")
         launcher.target = self
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Quiet Mode", action: #selector(toggleQuiet), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Quiet for 1 Hour", action: #selector(quietHour), keyEquivalent: "").target = self
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Check for Updates…", action: #selector(updates), keyEquivalent: "").target = self
         let login = menu.addItem(withTitle: "Launch at Login", action: #selector(toggleLogin), keyEquivalent: "")
@@ -46,6 +49,8 @@ final class MenuBarController: NSObject {
     @objc private func shade() { openShade?() }
     @objc private func launcherAction() { openLauncher?() }
     @objc private func settings() { openSettings?() }
+    @objc private func toggleQuiet() { AppSettings.shared.setQuiet(!AppSettings.shared.quietManualOn) }
+    @objc private func quietHour() { AppSettings.shared.setQuiet(true, for: 3600) }
     @objc private func updates() {
         if Updater.shared.newer == nil { Updater.shared.check(manual: true) }
         SettingsWindowController.shared.show(tab: "updates")
@@ -61,6 +66,13 @@ extension MenuBarController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         for item in menu.items where item.action == #selector(toggleLogin) {
             item.state = LaunchAtLogin.isEnabled ? .on : .off
+        }
+        let s = AppSettings.shared
+        for item in menu.items where item.action == #selector(toggleQuiet) {
+            item.state = s.quietManualOn ? .on : .off
+            item.title = s.quietManualOn && s.quietUntil > 0
+                ? "Quiet Mode (until \(Date(timeIntervalSince1970: s.quietUntil).formatted(date: .omitted, time: .shortened)))"
+                : "Quiet Mode"
         }
         for item in menu.items where item.action == #selector(launcherAction) {
             item.title = "Search Apps   \(AppSettings.shared.hotkeyDescription)"

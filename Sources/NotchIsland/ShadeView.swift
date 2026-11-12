@@ -154,7 +154,8 @@ struct ShadeContent: View {
 
 // MARK: - Quick toggles
 
-/// Five equal tiles: Dark Mode, Keep Awake, Wi-Fi, Mirror, Focus. Focus reflects the system's
+/// Six equal tiles: Dark Mode, Keep Awake, Wi-Fi, Mirror, Quiet, Focus. Quiet is NotchIsland's
+/// own Quiet Mode (lit also while it follows a Focus). Focus reflects the system's
 /// Focus mode (lit with its name while one is on) and opens Focus settings, since macOS has no
 /// public API to switch it.
 struct QuickTogglesRow: View {
@@ -185,6 +186,14 @@ struct QuickTogglesRow: View {
             }
             ToggleTile(symbol: "camera.fill", label: "Mirror", on: state.showMirror, help: "Camera check") {
                 withAnimation(Motion.quick) { state.showMirror.toggle() }
+            }
+            ToggleTile(symbol: state.isQuiet ? "bell.slash.fill" : "bell.fill", label: "Quiet", on: state.isQuiet,
+                       help: state.quietReason ?? "Quiet Mode: nothing pops out of the notch") {
+                if state.isQuiet, !state.settings.quietManualOn {
+                    SettingsWindowController.shared.show(tab: "visibility")   // quiet because of Focus
+                } else {
+                    state.toggleQuiet()
+                }
             }
             ToggleTile(symbol: "moon.fill", label: status.focusName ?? "Focus", on: status.focusName != nil,
                        help: status.focusName.map { "\($0) is on · Manage Focus in System Settings" }

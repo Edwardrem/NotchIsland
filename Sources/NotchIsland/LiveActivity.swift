@@ -38,9 +38,13 @@ final class ActivityCenter: ObservableObject {
     private var dismissWork: DispatchWorkItem?
     private static let stickyHUDSeconds: TimeInterval = 4
 
+    /// Asked on the main queue for every activity; false drops it (Quiet Mode, see IslandState).
+    var allows: ((LiveActivity) -> Bool)?
+
     func show(_ activity: LiveActivity) {
         DispatchQueue.main.async {
             guard !self.muted.contains(activity.id) else { return }
+            guard self.allows?(activity) ?? true else { return }
             if activity.duration == 0 {
                 self.stickies[activity.id] = activity
                 let first = !self.announced.contains(activity.id)
@@ -84,6 +88,17 @@ final class ActivityCenter: ObservableObject {
                 if self.current?.id == id { self.dismissWork?.cancel(); self.current = nil }
                 if self.sticky?.id == id { self.sticky = self.stickies.values.first }
             }
+        }
+    }
+
+    /// Quiet Mode came on: drop the HUD and every long-running ring. One that is still going
+    /// (a download) comes back with its next update once quiet ends.
+    func silence() {
+        DispatchQueue.main.async {
+            self.dismissWork?.cancel()
+            self.stickies.removeAll()
+            self.announced.removeAll()
+            withAnimation(Motion.quick) { self.current = nil; self.sticky = nil }
         }
     }
 

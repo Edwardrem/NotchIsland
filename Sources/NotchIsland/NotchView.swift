@@ -186,7 +186,7 @@ struct NotchView: View {
             }
             Spacer(minLength: 6)
             if settings.indicatorsEnabled {
-                IndicatorStrip(status: state.status, caffeine: state.caffeine)
+                IndicatorStrip(status: state.status, caffeine: state.caffeine, quiet: state.isQuiet)
             }
             BatteryBadge()
             notificationsButton
@@ -342,6 +342,7 @@ struct CompactEars: View {
 struct IndicatorStrip: View {
     @ObservedObject var status: SystemStatus
     @ObservedObject var caffeine: Caffeine
+    var quiet = false
 
     private struct Indicator: Identifiable {
         let id: String      // symbol
@@ -354,6 +355,7 @@ struct IndicatorStrip: View {
         if status.micInUse { out.append(Indicator(id: "mic.fill", text: "Mic", tint: UI.mic)) }
         if status.cameraInUse { out.append(Indicator(id: "video.fill", text: "Camera", tint: UI.camera)) }
         if let f = status.focusName { out.append(Indicator(id: "moon.fill", text: f, tint: UI.focus)) }
+        if quiet { out.append(Indicator(id: "bell.slash.fill", text: "Quiet", tint: .white)) }
         if caffeine.isOn { out.append(Indicator(id: "cup.and.saucer.fill", text: "Awake", tint: Theme.accent)) }
         return out
     }
@@ -362,7 +364,9 @@ struct IndicatorStrip: View {
         let items = indicators
         HStack(spacing: 5) {
             ForEach(items) { item in
-                StatusPill(symbol: item.id, text: item.text, tint: item.tint, iconOnly: items.count > 2)
+                // Quiet gives up its label first, so the clock beside it keeps its line.
+                StatusPill(symbol: item.id, text: item.text, tint: item.tint,
+                           iconOnly: items.count > 2 || (items.count > 1 && item.id == "bell.slash.fill"))
             }
         }
     }
